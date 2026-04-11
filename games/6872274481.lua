@@ -17602,31 +17602,26 @@ end
 	
 run(function()
 	local Breaker
+	local Mode
 	local Range
 	local BreakSpeed
+	local Angle
 	local UpdateRate
 	local Custom
 	local Bed
+	local Hive
+	local Tesla
 	local LuckyBlock
 	local IronOre
-	local Tesla
-	local Hive
-	local Pinata
 	local Effect
-	local CustomHealth = {}
+	local CustomHealth = {Enabled = false}
 	local Animation
 	local SelfBreak
 	local InstantBreak
 	local LimitItem
-	local AutoTool
-	local MouseDown
-	local YetiBreaker
-	local RagnarBreaker
-	local BreakSort
-	local BreakMode
-	local frozenBlockPositions = {}
+	local AutoTool = {Enabled = false}
 	local customlist, parts = {}, {}
-
+	
 	local function customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
 		if block:GetAttribute('NoHealthbar') then return end
 		if not self.healthbarPart or not self.healthbarBlockRef or self.healthbarBlockRef.blockPosition ~= blockRef.blockPosition then
@@ -17644,7 +17639,7 @@ run(function()
 			part.Parent = workspace
 			self.healthbarPart = part
 			bedwars.QueryUtil:setQueryIgnored(self.healthbarPart, true)
-
+	
 			local mounted = bedwars.Roact.mount(create('BillboardGui', {
 				Size = UDim2.fromOffset(249, 102),
 				StudsOffset = Vector3.new(0, 2.5, 0),
@@ -17703,7 +17698,7 @@ run(function()
 					})
 				})
 			}), part)
-
+	
 			self.healthbarMaid:GiveTask(function()
 				cleanCheck = false
 				self.healthbarBlockRef = nil
@@ -17713,193 +17708,63 @@ run(function()
 				end
 				self.healthbarPart = nil
 			end)
-
+	
 			bedwars.RuntimeLib.Promise.delay(5):andThen(function()
 				if cleanCheck then
 					self.healthbarMaid:DoCleaning()
 				end
 			end)
 		end
-
+	
 		local newpercent = math.clamp((health - changeHealth) / maxHealth, 0, 1)
 		tweenService:Create(self.healthbarProgressRef:getValue(), TweenInfo.new(0.3), {
 			Size = UDim2.fromScale(newpercent, 1), BackgroundColor3 = Color3.fromHSV(math.clamp(newpercent / 2.5, 0, 1), 0.89, 0.75)
 		}):Play()
 	end
-
+	
 	local hit = 0
-
-	local function isSameTeam(userId)
-		if not userId then return false end
-		local localTeam = lplr.Team
-		if not localTeam then return false end
-		for _, player in playersService:GetPlayers() do
-			if player.UserId == userId and player.Team == localTeam then
+	
+	local function attemptBreak(tab, localPosition)
+		if not tab then return end
+		if #tab > 1 then
+			pcall(function()
+				table.sort(tab, function(a, b)
+					return (localPosition - a.Position).Magnitude <= (localPosition - b.Position).Magnitude
+				end)
+			end)
+		end
+		for _, v in tab do
+			if (v.Position - localPosition).Magnitude < Range.Value and bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
+				if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
+				if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then continue end
+				if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
+	
+				hit += 1
+				local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, InstantBreak.Enabled, AutoTool.Enabled, Mode.Value, Angle.Value)
+				if path then
+					local currentnode = target
+					for _, part in parts do
+						part.Position = currentnode or Vector3.zero
+						if currentnode then
+							part.BoxHandleAdornment.Color3 = currentnode == endpos and Color3.new(1, 0.2, 0.2) or currentnode == target and Color3.new(0.2, 0.2, 1) or Color3.new(0.2, 1, 0.2)
+						end
+						currentnode = path[currentnode]
+					end
+				end
+	
+				task.wait(InstantBreak.Enabled and (store.damageBlockFail > tick() and 4.5 or 0) or BreakSpeed.Value)
+	
 				return true
 			end
 		end
+	
 		return false
 	end
-
-	local function passesChecks(v)
-		if not SelfBreak.Enabled then
-			if v:GetAttribute('PlacedByUserId') == lplr.UserId then return false end
-			if isSameTeam(v:GetAttribute('PlacedByUserId')) then return false end
-		end
-		if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then return false end
-		if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then return false end
-		return true
-	end
-
-	local function doBreak(v)
-		hit += 1
-		local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, InstantBreak.Enabled or AutoTool.Enabled)
-		if path then
-			local currentnode = target
-			for _, part in parts do
-				part.Position = currentnode or Vector3.zero
-				if currentnode then
-					part.BoxHandleAdornment.Color3 = currentnode == endpos and Color3.new(1, 0.2, 0.2) or currentnode == target and Color3.new(0.2, 0.2, 1) or Color3.new(0.2, 1, 0.2)
-				end
-				currentnode = path[currentnode]
-			end
-		end
-		task.wait(InstantBreak.Enabled and (store.damageBlockFail > tick() and 4.5 or 0) or BreakSpeed.Value)
-		return true
-	end
-
-	local function findPathBlock(targetPos, playerPos)
-		local dir = (targetPos - playerPos)
-		local distance = dir.Magnitude
-		if distance < 3 then return nil end
-		dir = dir.Unit
-		local checked = {}
-		local step = 3
-		for i = step, distance - step, step do
-			local checkPos = roundPos(playerPos + dir * i)
-			local key = checkPos.X .. ',' .. checkPos.Y .. ',' .. checkPos.Z
-			if checked[key] then continue end
-			checked[key] = true
-			if (checkPos - targetPos).Magnitude < 4 then continue end
-			local block = getPlacedBlock(checkPos)
-			if block and bedwars.BlockController:isBlockBreakable({blockPosition = checkPos / 3}, lplr) then
-				return block
-			end
-		end
-		return nil
-	end
-
-	local function isYetiBlock(block)
-		if not block then return false end
-		local pos = block.Position / 3
-		local key = math.round(pos.X) .. ',' .. math.round(pos.Y) .. ',' .. math.round(pos.Z)
-		return frozenBlockPositions[key] == true
-	end
-
-	local function hookFreezeController()
-		local FreezeCtrl = (bedwars.KnitClient and bedwars.KnitClient.Controllers and bedwars.KnitClient.Controllers.FreezeBlocksController)
-			or (bedwars.Knit and bedwars.Knit.Controllers and bedwars.Knit.Controllers.FreezeBlocksController)
-		if not FreezeCtrl or not FreezeCtrl.freezeBlocks then return end
-		local oldFreeze = FreezeCtrl.freezeBlocks
-		FreezeCtrl.freezeBlocks = function(self, position, frozenBlocks, ...)
-			table.clear(frozenBlockPositions)
-			if type(frozenBlocks) == 'table' then
-				for _, v in frozenBlocks do
-					local pos
-					if typeof(v) == 'Vector3' then
-						pos = v
-					elseif type(v) == 'table' then
-						pos = v.position or v.blockPosition or v.pos
-					elseif typeof(v) == 'Instance' and v:IsA('BasePart') then
-						pos = v.Position / 3
-					end
-					if pos then
-						local key = math.round(pos.X) .. ',' .. math.round(pos.Y) .. ',' .. math.round(pos.Z)
-						frozenBlockPositions[key] = true
-					end
-				end
-			end
-			task.delay(8, function() table.clear(frozenBlockPositions) end)
-			return oldFreeze(self, position, frozenBlocks, ...)
-		end
-		Breaker:Clean(function()
-			pcall(function() FreezeCtrl.freezeBlocks = oldFreeze end)
-		end)
-	end
-
-	local function findYetiPathBlock(bedPos, playerPos)
-		local dir = (bedPos - playerPos)
-		local distance = dir.Magnitude
-		if distance < 3 then return nil end
-		dir = dir.Unit
-		local step = 3
-		local bestYeti, bestDist = nil, math.huge
-		for i = step, distance - step, step do
-			local checkPos = roundPos(playerPos + dir * i)
-			if (checkPos - bedPos).Magnitude < 4 then continue end
-			local block = getPlacedBlock(checkPos)
-			if block and isYetiBlock(block) then
-				local nextStepPos = roundPos(checkPos + dir * step)
-				local nextBlock = getPlacedBlock(nextStepPos)
-				if not nextBlock then continue end
-				local dist = (checkPos - bedPos).Magnitude
-				if dist < bestDist and bedwars.BlockController:isBlockBreakable({blockPosition = checkPos / 3}, lplr) and passesChecks(block) then
-					bestYeti = block
-					bestDist = dist
-				end
-			end
-		end
-		return bestYeti
-	end
-
-	local function attemptBreak(tab, localPosition)
-		if not tab then return false end
-		if MouseDown and MouseDown.Enabled and not inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then return false end
-		if RagnarBreaker.Enabled then
-			if bedwars.AbilityController:canUseAbility("berserker_rage") then
-				bedwars.AbilityController:useAbility('berserker_rage')
-			end
-		end
-
-		for _, v in tab do
-			if (v.Position - localPosition).Magnitude < Range.Value and bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
-				if not passesChecks(v) then continue end
-
-				if BreakSort and BreakSort.Value == 'Nearest' then
-					local blocker = findPathBlock(v.Position, localPosition)
-					if blocker and passesChecks(blocker) then
-						return doBreak(blocker)
-					end
-				end
-
-				return doBreak(v)
-			end
-		end
-		return false
-	end
-
-	local function attemptBreakNamed(names, localPosition)
-		if MouseDown and MouseDown.Enabled and not inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then return false end
-		local best, bestDist = nil, math.huge
-		for _, v in store.blocks do
-			if v and v:IsA('BasePart') and table.find(names, v.Name) then
-				local dist = (v.Position - localPosition).Magnitude
-				if dist < Range.Value and dist < bestDist then
-					if bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
-						if passesChecks(v) then
-							best = v
-							bestDist = dist
-						end
-					end
-				end
-			end
-		end
-		if best then return doBreak(best) end
-		return false
-	end
-
+	
 	Breaker = vape.Categories.Minigames:CreateModule({
 		Name = 'Breaker',
+		Tags = getModTags(nil, isNewUser('Breaker')),
+		Alias = {'nuker', 'bedbreaker', 'bednuker'},
 		Function = function(callback)
 			if callback then
 				for _ = 1, 30 do
@@ -17918,9 +17783,24 @@ run(function()
 					highlight.Parent = part
 					table.insert(parts, part)
 				end
-
-				task.spawn(hookFreezeController)
+	
 				local beds = collection('bed', Breaker)
+				local teslas = collection('tesla-trap', Breaker, function(tab, obj)
+					task.delay(0.1, function()
+						local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
+						if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
+							table.insert(tab, obj)
+						end
+					end)
+				end)
+				local hives = collection('beehive', Breaker, function(tab, obj)
+					task.delay(0.1, function()
+						local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
+						if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
+							table.insert(tab, obj)
+						end
+					end)
+				end)
 				local luckyblock = collection('LuckyBlock', Breaker)
 				local ironores = collection('iron_ore_mesh_block', Breaker)
 				customlist = collection('block', Breaker, function(tab, obj)
@@ -17928,42 +17808,20 @@ run(function()
 						table.insert(tab, obj)
 					end
 				end)
-
+	
 				repeat
 					task.wait(1 / UpdateRate.Value)
 					if not Breaker.Enabled then break end
 					if entitylib.isAlive then
 						local localPosition = entitylib.character.RootPart.Position
-
-						if Bed.Enabled and YetiBreaker and YetiBreaker.Enabled then
-							local foundYeti = false
-							for _, bed in beds do
-								if foundYeti then break end
-								if (bed.Position - localPosition).Magnitude < Range.Value then
-									local yetiBlock = findYetiPathBlock(bed.Position, localPosition)
-									if yetiBlock then
-										doBreak(yetiBlock)
-										foundYeti = true
-									end
-								end
-							end
-							if foundYeti then continue end
-						end
+	
+						if attemptBreak(Tesla.Enabled and teslas, localPosition) then continue end
 						if attemptBreak(Bed.Enabled and beds, localPosition) then continue end
+						if attemptBreak(Hive.Enabled and hives, localPosition) then continue end
 						if attemptBreak(customlist, localPosition) then continue end
 						if attemptBreak(LuckyBlock.Enabled and luckyblock, localPosition) then continue end
 						if attemptBreak(IronOre.Enabled and ironores, localPosition) then continue end
-
-						do
-							local activeNames = {}
-							if Tesla and Tesla.Enabled then table.insert(activeNames, 'tesla_trap') end
-							if Hive and Hive.Enabled then table.insert(activeNames, 'beehive') end
-							if Pinata and Pinata.Enabled then table.insert(activeNames, 'pinata') end
-							if #activeNames > 0 then
-								if attemptBreakNamed(activeNames, localPosition) then continue end
-							end
-						end
-
+	
 						for _, v in parts do
 							v.Position = Vector3.zero
 						end
@@ -17979,12 +17837,12 @@ run(function()
 		end,
 		Tooltip = 'Break blocks around you automatically'
 	})
-	BreakSort = Breaker:CreateDropdown({
-		Name = "Break Sorting",
-		List = {'Health','Nearest'},
-		Default = 'Nearest'
+	Mode = Breaker:CreateDropdown({
+		Name = 'Break Sorting',
+		List = {'Distance', 'Health'},
+		Tooltip = 'Distance - Targets nearest blocks\nHealth = Targets the best block',
+		Default = 'Health'
 	})
-
 	Range = Breaker:CreateSlider({
 		Name = 'Break range',
 		Min = 1,
@@ -18001,6 +17859,12 @@ run(function()
 		Default = 0.25,
 		Decimal = 100,
 		Suffix = 'seconds'
+	})
+	Angle = Breaker:CreateSlider({
+		Name = 'Max angle',
+		Min = 1,
+		Max = 360,
+		Default = 360,	
 	})
 	UpdateRate = Breaker:CreateSlider({
 		Name = 'Update rate',
@@ -18025,14 +17889,6 @@ run(function()
 		Name = 'Break Bed',
 		Default = true
 	})
-	LuckyBlock = Breaker:CreateToggle({
-		Name = 'Break Lucky Block',
-		Default = true
-	})
-	IronOre = Breaker:CreateToggle({
-		Name = 'Break Iron Ore',
-		Default = true
-	})
 	Tesla = Breaker:CreateToggle({
 		Name = 'Break Tesla',
 		Default = true
@@ -18041,9 +17897,13 @@ run(function()
 		Name = 'Break Hive',
 		Default = true
 	})
-	Pinata = Breaker:CreateToggle({
-		Name = 'Break Pinata',
-		Default = false
+	LuckyBlock = Breaker:CreateToggle({
+		Name = 'Break Lucky Block',
+		Default = true
+	})
+	IronOre = Breaker:CreateToggle({
+		Name = 'Break Iron Ore',
+		Default = true
 	})
 	Effect = Breaker:CreateToggle({
 		Name = 'Show Healthbar & Effects',
@@ -18064,30 +17924,12 @@ run(function()
 	InstantBreak = Breaker:CreateToggle({Name = 'Instant Break'})
 	AutoTool = Breaker:CreateToggle({
 		Name = 'Auto Tool',
-		Tooltip = 'Automatically switches to the best tool for breaking blocks'
+		Tooltip = 'Visualises tool switching'
 	})
 	LimitItem = Breaker:CreateToggle({
 		Name = 'Limit to items',
 		Tooltip = 'Only breaks when tools are held'
 	})
-	MouseDown = Breaker:CreateToggle({
-		Name = 'Require Mouse Down',
-		Tooltip = 'Only breaks blocks when holding left click'
-	})
-	YetiBreaker = Breaker:CreateToggle({
-		Name = 'Yeti Breaker',
-		Tooltip = 'Focuses on frozen blocks'
-	})
-	RagnarBreaker = Breaker:CreateToggle({
-		Name = 'Ragnar',
-		Tooltip = 'pops the ragnar ability whenever nuking'
-	})
-
-	task.defer(function()
-		if CustomHealth and CustomHealth.Object then
-			CustomHealth.Object.Visible = Effect.Enabled
-		end
-	end)
 end)
 	
 run(function()
