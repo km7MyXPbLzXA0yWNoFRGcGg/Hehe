@@ -46,7 +46,7 @@ local function downloadFile(path, func)
         local success = false
         for attempt = 1, 3 do
             local suc, result = pcall(function()
-                return game:HttpGet('https://raw.githubusercontent.com/poopparty/poopparty/' .. readfile('newvape/profiles/commit.txt') .. '/' .. select(1, path:gsub('newvape/', '')), true)
+                return game:HttpGet('https://raw.githubusercontent.com/yanprime/vapeyan/' .. readfile('newvape/profiles/commit.txt') .. '/' .. select(1, path:gsub('newvape/', '')), true)
             end)
             if suc and result ~= '404: Not Found' then
                 res = result
@@ -85,7 +85,7 @@ local function finishLoading()
                 repeat task.wait() until game:IsLoaded()
                 if getgenv and not getgenv().shared then getgenv().shared = {} end
                 shared.vapereload = true
-                loadstring(game:HttpGet('https://raw.githubusercontent.com/poopparty/poopparty/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true), 'loader')()
+                loadstring(game:HttpGet('https://raw.githubusercontent.com/yanprime/vapeyan/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true), 'loader')()
             ]]
 			if shared.VapeDeveloper then
 				teleportScript = 'shared.VapeDeveloper = true\n'..teleportScript
@@ -106,7 +106,7 @@ local function finishLoading()
         if not vape.Categories then return end
         if vape.Categories.Main.Options['GUI bind indicator'].Enabled then
             local name = shared.ValidatedUsername and ('wsg, ' .. shared.ValidatedUsername .. ' :D ') or 'welcome '
-            vape:CreateNotification('[AEROV4] Finished Loading', name .. (vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press ' .. table.concat(vape.Keybind, ' + '):upper() .. ' to open GUI'), 5)
+            vape:CreateNotification('[yanv4] Finished Loading', name .. (vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press ' .. table.concat(vape.Keybind, ' + '):upper() .. ' to open GUI'), 5)
         end
     end
 end
@@ -122,18 +122,18 @@ end
 
 local guiFunc, guiErr = loadstring(downloadFile('newvape/guis/' .. gui .. '.lua'), 'gui')
 if not guiFunc then
-    error('[AEROV4] Failed to load GUI: ' .. tostring(guiErr))
+    error('[yanv4] Failed to load GUI: ' .. tostring(guiErr))
 end
 vape = guiFunc()
 if not vape then
-    error('[AEROV4] GUI returned nil file may be corrupted try deleting newvape/guis/' .. gui .. '.lua and reinjecting.')
+    error('[yanv4] GUI returned nil file may be corrupted try deleting newvape/guis/' .. gui .. '.lua and reinjecting.')
 end
 if not vape.Load then
     if delfile then pcall(function() delfile('newvape/guis/' .. gui .. '.lua') end) end
     error('[AEROV4] gui file corrupted (missing load) reinject..')
 end
 if not vape.Init and not vape.Load then
-    error('[AEROV4] failed to initialize properly reinject to fix this bs')
+    error('[yanv4] failed to initialize properly reinject to fix this bs')
 end
 shared.vape = vape
 task.wait(0.1)
@@ -167,7 +167,7 @@ if not shared.VapeIndependent then
     else
         if not shared.VapeDeveloper then
             local suc, res = pcall(function()
-                return game:HttpGet('https://raw.githubusercontent.com/poopparty/poopparty/' .. readfile('newvape/profiles/commit.txt') .. '/games/' .. gameFileId .. '.lua', true)
+                return game:HttpGet('https://raw.githubusercontent.com/yanprime/vapeyan/' .. readfile('newvape/profiles/commit.txt') .. '/games/' .. gameFileId .. '.lua', true)
             end)
             if suc and res ~= '404: Not Found' then
                 loadstring(downloadFile('newvape/games/' .. gameFileId .. '.lua'), tostring(gameFileId))(...)
