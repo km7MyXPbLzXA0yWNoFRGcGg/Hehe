@@ -6138,76 +6138,7 @@ run(function()
 	})
 end)
 
-run(function()
 
-	local TaxRemover
-	local oldDispatch
-	local oldtax
-	local oldadded
-	local olditems
-	local oldhook
-	local oldConnect
-	TaxRemover = vape.Categories.Blatant:CreateModule({
-		Name = "TaxRemover",
-		Function = function(callback)
-			if callback then
-				oldtax = bedwars.ShopTaxController.isTaxed
-				oldadded = bedwars.ShopTaxController.getAddedTax
-				olditems = bedwars.ShopTaxController.getTaxedItems
-				oldDispatch = bedwars.Store.dispatch
-				task.spawn(function()
-					bedwars.Store.dispatch = function(...)
-						local arg = select(2, ...)
-						if arg and typeof(arg) == 'table' and arg.type == 'IncrementTaxState'  then
-							return false
-						end 	
-						return oldDispatch(...)
-					end
-				end)
-				task.spawn(function()
-					bedwars.ShopTaxController.isTaxed = function(...)
-						return 0
-					end
-				end)
-				task.spawn(function()
-					bedwars.ShopTaxController.getTaxedItems = function(...)
-						return {}
-					end
-				end)
-				task.spawn(function()
-					bedwars.ShopTaxController.getAddedTax = function(...)
-						return 0
-					end
-				end)
-
-				task.spawn(function()
-					if bedwars.ShopTaxController.taxStateUpdateEvent then
-						oldConnect = bedwars.ShopTaxController.taxStateUpdateEvent.Connect
-						bedwars.ShopTaxController.taxStateUpdateEvent.Connect = function() 
-							return {Disconnect = function() end}
-						end
-					end
-				end)
-				task.spawn(function()
-					bedwars.ShopTaxController.hasTax = 0
-					bedwars.ShopTaxController.taxedItems = {}
-					bedwars.ShopTaxController.addedTaxMap = {}
-				end)
-			else
-				bedwars.Store.dispatch = oldDispatch
-				bedwars.ShopTaxController.isTaxed = oldtax
-				bedwars.ShopTaxController.getAddedTax = oldadded
-				bedwars.ShopTaxController.getTaxedItems = olditems
-				bedwars.ShopTaxController.taxStateUpdateEvent.Connect = oldConnect
-				oldDispatch = nil
-				oldtax = nil
-				oldadded = nil
-				olditems = nil
-				oldConnect = nil
-			end
-		end
-	})
-end)
 run(function()
 	local shooting, old = false
 	local AutoShootInterval
@@ -13184,586 +13115,6 @@ run(function()
 	})
 end)
 	
-run(function()
-	local AutoHotbar
-	local Mode
-	local Clear
-	local List
-	local Active
-	
-	local function CreateWindow(self)
-		local selectedslot = 1
-		local window = Instance.new('Frame')
-		window.Name = 'HotbarGUI'
-		window.Size = UDim2.fromOffset(660, 465)
-		window.Position = UDim2.fromScale(0.5, 0.5)
-		window.BackgroundColor3 = uipallet.Main
-		window.AnchorPoint = Vector2.new(0.5, 0.5)
-		window.Visible = false
-		window.Parent = vape.gui.ScaledGui
-		local title = Instance.new('TextLabel')
-		title.Name = 'Title'
-		title.Size = UDim2.new(1, -10, 0, 20)
-		title.Position = UDim2.fromOffset(math.abs(title.Size.X.Offset), 12)
-		title.BackgroundTransparency = 1
-		title.Text = 'AutoHotbar'
-		title.TextXAlignment = Enum.TextXAlignment.Left
-		title.TextColor3 = uipallet.Text
-		title.TextSize = 13
-		title.FontFace = uipallet.Font
-		title.Parent = window
-		local divider = Instance.new('Frame')
-		divider.Name = 'Divider'
-		divider.Size = UDim2.new(1, 0, 0, 1)
-		divider.Position = UDim2.fromOffset(0, 40)
-		divider.BackgroundColor3 = color.Light(uipallet.Main, 0.04)
-		divider.BorderSizePixel = 0
-		divider.Parent = window
-		addBlur(window)
-		local modal = Instance.new('TextButton')
-		modal.Text = ''
-		modal.BackgroundTransparency = 1
-		modal.Modal = true
-		modal.Parent = window
-		local corner = Instance.new('UICorner')
-		corner.CornerRadius = UDim.new(0, 5)
-		corner.Parent = window
-		local close = Instance.new('ImageButton')
-		close.Name = 'Close'
-		close.Size = UDim2.fromOffset(24, 24)
-		close.Position = UDim2.new(1, -35, 0, 9)
-		close.BackgroundColor3 = Color3.new(1, 1, 1)
-		close.BackgroundTransparency = 1
-		close.Image = getcustomasset('newvape/assets/new/close.png')
-		close.ImageColor3 = color.Light(uipallet.Text, 0.2)
-		close.ImageTransparency = 0.5
-		close.AutoButtonColor = false
-		close.Parent = window
-		close.MouseEnter:Connect(function()
-			close.ImageTransparency = 0.3
-			tween:Tween(close, TweenInfo.new(0.2), {
-				BackgroundTransparency = 0.6
-			})
-		end)
-		close.MouseLeave:Connect(function()
-			close.ImageTransparency = 0.5
-			tween:Tween(close, TweenInfo.new(0.2), {
-				BackgroundTransparency = 1
-			})
-		end)
-		close.MouseButton1Click:Connect(function()
-			window.Visible = false
-			vape.gui.ScaledGui.ClickGui.Visible = true
-		end)
-		local closecorner = Instance.new('UICorner')
-		closecorner.CornerRadius = UDim.new(1, 0)
-		closecorner.Parent = close
-		local bigslot = Instance.new('Frame')
-		bigslot.Size = UDim2.fromOffset(110, 111)
-		bigslot.Position = UDim2.fromOffset(11, 71)
-		bigslot.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
-		bigslot.Parent = window
-		local bigslotcorner = Instance.new('UICorner')
-		bigslotcorner.CornerRadius = UDim.new(0, 4)
-		bigslotcorner.Parent = bigslot
-		local bigslotstroke = Instance.new('UIStroke')
-		bigslotstroke.Color = color.Light(uipallet.Main, 0.034)
-		bigslotstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		bigslotstroke.Parent = bigslot
-		local slotnum = Instance.new('TextLabel')
-		slotnum.Size = UDim2.fromOffset(80, 20)
-		slotnum.Position = UDim2.fromOffset(25, 200)
-		slotnum.BackgroundTransparency = 1
-		slotnum.Text = 'SLOT 1'
-		slotnum.TextColor3 = color.Dark(uipallet.Text, 0.1)
-		slotnum.TextSize = 12
-		slotnum.FontFace = uipallet.Font
-		slotnum.Parent = window
-		for i = 1, 9 do
-			local slotbkg = Instance.new('TextButton')
-			slotbkg.Name = 'Slot'..i
-			slotbkg.Size = UDim2.fromOffset(51, 52)
-			slotbkg.Position = UDim2.fromOffset(89 + (i * 55), 382)
-			slotbkg.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
-			slotbkg.Text = ''
-			slotbkg.AutoButtonColor = false
-			slotbkg.Parent = window
-			local slotimage = Instance.new('ImageLabel')
-			slotimage.Size = UDim2.fromOffset(32, 32)
-			slotimage.Position = UDim2.new(0.5, -16, 0.5, -16)
-			slotimage.BackgroundTransparency = 1
-			slotimage.Image = ''
-			slotimage.Parent = slotbkg
-			local slotcorner = Instance.new('UICorner')
-			slotcorner.CornerRadius = UDim.new(0, 4)
-			slotcorner.Parent = slotbkg
-			local slotstroke = Instance.new('UIStroke')
-			slotstroke.Color = color.Light(uipallet.Main, 0.04)
-			slotstroke.Thickness = 2
-			slotstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-			slotstroke.Enabled = i == selectedslot
-			slotstroke.Parent = slotbkg
-			slotbkg.MouseEnter:Connect(function()
-				slotbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-			end)
-			slotbkg.MouseLeave:Connect(function()
-				slotbkg.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
-			end)
-			slotbkg.MouseButton1Click:Connect(function()
-				window['Slot'..selectedslot].UIStroke.Enabled = false
-				selectedslot = i
-				slotstroke.Enabled = true
-				slotnum.Text = 'SLOT '..selectedslot
-			end)
-			slotbkg.MouseButton2Click:Connect(function()
-				local obj = self.Hotbars[self.Selected]
-				if obj then
-					window['Slot'..i].ImageLabel.Image = ''
-					obj.Hotbar[tostring(i)] = nil
-					obj.Object['Slot'..i].Image = '	'
-				end
-			end)
-		end
-		local searchbkg = Instance.new('Frame')
-		searchbkg.Size = UDim2.fromOffset(496, 31)
-		searchbkg.Position = UDim2.fromOffset(142, 80)
-		searchbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-		searchbkg.Parent = window
-		local search = Instance.new('TextBox')
-		search.Size = UDim2.new(1, -10, 0, 31)
-		search.Position = UDim2.fromOffset(10, 0)
-		search.BackgroundTransparency = 1
-		search.Text = ''
-		search.PlaceholderText = ''
-		search.TextXAlignment = Enum.TextXAlignment.Left
-		search.TextColor3 = uipallet.Text
-		search.TextSize = 12
-		search.FontFace = uipallet.Font
-		search.ClearTextOnFocus = false
-		search.Parent = searchbkg
-		local searchcorner = Instance.new('UICorner')
-		searchcorner.CornerRadius = UDim.new(0, 4)
-		searchcorner.Parent = searchbkg
-		local searchicon = Instance.new('ImageLabel')
-		searchicon.Size = UDim2.fromOffset(14, 14)
-		searchicon.Position = UDim2.new(1, -26, 0, 8)
-		searchicon.BackgroundTransparency = 1
-		searchicon.Image = getcustomasset('newvape/assets/new/search.png')
-		searchicon.ImageColor3 = color.Light(uipallet.Main, 0.37)
-		searchicon.Parent = searchbkg
-		local children = Instance.new('ScrollingFrame')
-		children.Name = 'Children'
-		children.Size = UDim2.fromOffset(500, 240)
-		children.Position = UDim2.fromOffset(144, 122)
-		children.BackgroundTransparency = 1
-		children.BorderSizePixel = 0
-		children.ScrollBarThickness = 2
-		children.ScrollBarImageTransparency = 0.75
-		children.CanvasSize = UDim2.new()
-		children.Parent = window
-		local windowlist = Instance.new('UIGridLayout')
-		windowlist.SortOrder = Enum.SortOrder.LayoutOrder
-		windowlist.FillDirectionMaxCells = 9
-		windowlist.CellSize = UDim2.fromOffset(51, 52)
-		windowlist.CellPadding = UDim2.fromOffset(4, 3)
-		windowlist.Parent = children
-		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-			if vape.ThreadFix then
-				setthreadidentity(8)
-			end
-			children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / vape.guiscale.Scale)
-		end)
-		table.insert(vape.Windows, window)
-	
-		local function createitem(id, image)
-			local slotbkg = Instance.new('TextButton')
-			slotbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.02)
-			slotbkg.Text = ''
-			slotbkg.AutoButtonColor = false
-			slotbkg.Parent = children
-			local slotimage = Instance.new('ImageLabel')
-			slotimage.Size = UDim2.fromOffset(32, 32)
-			slotimage.Position = UDim2.new(0.5, -16, 0.5, -16)
-			slotimage.BackgroundTransparency = 1
-			slotimage.Image = image
-			slotimage.Parent = slotbkg
-			local slotcorner = Instance.new('UICorner')
-			slotcorner.CornerRadius = UDim.new(0, 4)
-			slotcorner.Parent = slotbkg
-			slotbkg.MouseEnter:Connect(function()
-				slotbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.04)
-			end)
-			slotbkg.MouseLeave:Connect(function()
-				slotbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.02)
-			end)
-			slotbkg.MouseButton1Click:Connect(function()
-				local obj = self.Hotbars[self.Selected]
-				if obj then
-					window['Slot'..selectedslot].ImageLabel.Image = image
-					obj.Hotbar[tostring(selectedslot)] = id
-					obj.Object['Slot'..selectedslot].Image = image
-				end
-			end)
-		end
-	
-		local function indexSearch(text)
-			for _, v in children:GetChildren() do
-				if v:IsA('TextButton') then
-					v:ClearAllChildren()
-					v:Destroy()
-				end
-			end
-	
-			if text == '' then
-				for _, v in {'diamond_sword', 'diamond_pickaxe', 'diamond_axe', 'shears', 'wood_bow', 'wool_white', 'fireball', 'apple', 'iron', 'gold', 'diamond', 'emerald'} do
-					createitem(v, bedwars.ItemMeta[v].image)
-				end
-				return
-			end
-	
-			for i, v in bedwars.ItemMeta do
-				if text:lower() == i:lower():sub(1, text:len()) then
-					if not v.image then continue end
-					createitem(i, v.image)
-				end
-			end
-		end
-	
-		search:GetPropertyChangedSignal('Text'):Connect(function()
-			indexSearch(search.Text)
-		end)
-		indexSearch('')
-	
-		return window
-	end
-	
-	vape.Components.HotbarList = function(optionsettings, children, api)
-		if vape.ThreadFix then
-			setthreadidentity(8)
-		end
-		local optionapi = {
-			Type = 'HotbarList',
-			Hotbars = {},
-			Selected = 1
-		}
-		local hotbarlist = Instance.new('TextButton')
-		hotbarlist.Name = 'HotbarList'
-		hotbarlist.Size = UDim2.fromOffset(220, 40)
-		hotbarlist.BackgroundColor3 = optionsettings.Darker and (children.BackgroundColor3 == color.Dark(uipallet.Main, 0.02) and color.Dark(uipallet.Main, 0.04) or color.Dark(uipallet.Main, 0.02)) or children.BackgroundColor3
-		hotbarlist.Text = ''
-		hotbarlist.BorderSizePixel = 0
-		hotbarlist.AutoButtonColor = false
-		hotbarlist.Parent = children
-		local textbkg = Instance.new('Frame')
-		textbkg.Name = 'BKG'
-		textbkg.Size = UDim2.new(1, -20, 0, 31)
-		textbkg.Position = UDim2.fromOffset(10, 4)
-		textbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-		textbkg.Parent = hotbarlist
-		local textbkgcorner = Instance.new('UICorner')
-		textbkgcorner.CornerRadius = UDim.new(0, 4)
-		textbkgcorner.Parent = textbkg
-		local textbutton = Instance.new('TextButton')
-		textbutton.Name = 'HotbarList'
-		textbutton.Size = UDim2.new(1, -2, 1, -2)
-		textbutton.Position = UDim2.fromOffset(1, 1)
-		textbutton.BackgroundColor3 = uipallet.Main
-		textbutton.Text = ''
-		textbutton.AutoButtonColor = false
-		textbutton.Parent = textbkg
-		textbutton.MouseEnter:Connect(function()
-			tween:Tween(textbkg, TweenInfo.new(0.2), {
-				BackgroundColor3 = color.Light(uipallet.Main, 0.14)
-			})
-		end)
-		textbutton.MouseLeave:Connect(function()
-			tween:Tween(textbkg, TweenInfo.new(0.2), {
-				BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-			})
-		end)
-		local textbuttoncorner = Instance.new('UICorner')
-		textbuttoncorner.CornerRadius = UDim.new(0, 4)
-		textbuttoncorner.Parent = textbutton
-		local textbuttonicon = Instance.new('ImageLabel')
-		textbuttonicon.Size = UDim2.fromOffset(12, 12)
-		textbuttonicon.Position = UDim2.fromScale(0.5, 0.5)
-		textbuttonicon.AnchorPoint = Vector2.new(0.5, 0.5)
-		textbuttonicon.BackgroundTransparency = 1
-		textbuttonicon.Image = getcustomasset('newvape/assets/new/add.png')
-		textbuttonicon.ImageColor3 = Color3.fromHSV(0.46, 0.96, 0.52)
-		textbuttonicon.Parent = textbutton
-		local childrenlist = Instance.new('Frame')
-		childrenlist.Size = UDim2.new(1, 0, 1, -40)
-		childrenlist.Position = UDim2.fromOffset(0, 40)
-		childrenlist.BackgroundTransparency = 1
-		childrenlist.Parent = hotbarlist
-		local windowlist = Instance.new('UIListLayout')
-		windowlist.SortOrder = Enum.SortOrder.LayoutOrder
-		windowlist.HorizontalAlignment = Enum.HorizontalAlignment.Center
-		windowlist.Padding = UDim.new(0, 3)
-		windowlist.Parent = childrenlist
-		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-			if vape.ThreadFix then
-				setthreadidentity(8)
-			end
-			hotbarlist.Size = UDim2.fromOffset(220, math.min(43 + windowlist.AbsoluteContentSize.Y / vape.guiscale.Scale, 603))
-		end)
-		textbutton.MouseButton1Click:Connect(function()
-			optionapi:AddHotbar()
-		end)
-		optionapi.Window = CreateWindow(optionapi)
-	
-		function optionapi:Save(savetab)
-			local hotbars = {}
-			for _, v in self.Hotbars do
-				table.insert(hotbars, v.Hotbar)
-			end
-			savetab.HotbarList = {
-				Selected = self.Selected,
-				Hotbars = hotbars
-			}
-		end
-	
-		function optionapi:Load(savetab)
-			for _, v in self.Hotbars do
-				v.Object:ClearAllChildren()
-				v.Object:Destroy()
-				table.clear(v.Hotbar)
-			end
-			table.clear(self.Hotbars)
-			for _, v in savetab.Hotbars do
-				self:AddHotbar(v)
-			end
-			self.Selected = savetab.Selected or 1
-		end
-	
-		function optionapi:AddHotbar(data)
-			local hotbardata = {Hotbar = data or {}}
-			table.insert(self.Hotbars, hotbardata)
-			local hotbar = Instance.new('TextButton')
-			hotbar.Size = UDim2.fromOffset(200, 27)
-			hotbar.BackgroundColor3 = table.find(self.Hotbars, hotbardata) == self.Selected and color.Light(uipallet.Main, 0.034) or uipallet.Main
-			hotbar.Text = ''
-			hotbar.AutoButtonColor = false
-			hotbar.Parent = childrenlist
-			hotbardata.Object = hotbar
-			local hotbarcorner = Instance.new('UICorner')
-			hotbarcorner.CornerRadius = UDim.new(0, 4)
-			hotbarcorner.Parent = hotbar
-			for i = 1, 9 do
-				local slot = Instance.new('ImageLabel')
-				slot.Name = 'Slot'..i
-				slot.Size = UDim2.fromOffset(17, 18)
-				slot.Position = UDim2.fromOffset(-7 + (i * 18), 5)
-				slot.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
-				slot.Image = hotbardata.Hotbar[tostring(i)] and bedwars.getIcon({itemType = hotbardata.Hotbar[tostring(i)]}, true) or ''
-				slot.BorderSizePixel = 0
-				slot.Parent = hotbar
-			end
-			hotbar.MouseButton1Click:Connect(function()
-				local ind = table.find(optionapi.Hotbars, hotbardata)
-				if ind == optionapi.Selected then
-					vape.gui.ScaledGui.ClickGui.Visible = false
-					optionapi.Window.Visible = true
-					for i = 1, 9 do
-						optionapi.Window['Slot'..i].ImageLabel.Image = hotbardata.Hotbar[tostring(i)] and bedwars.getIcon({itemType = hotbardata.Hotbar[tostring(i)]}, true) or ''
-					end
-				else
-					if optionapi.Hotbars[optionapi.Selected] then
-						optionapi.Hotbars[optionapi.Selected].Object.BackgroundColor3 = uipallet.Main
-					end
-					hotbar.BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-					optionapi.Selected = ind
-				end
-			end)
-			local close = Instance.new('ImageButton')
-			close.Name = 'Close'
-			close.Size = UDim2.fromOffset(16, 16)
-			close.Position = UDim2.new(1, -23, 0, 6)
-			close.BackgroundColor3 = Color3.new(1, 1, 1)
-			close.BackgroundTransparency = 1
-			close.Image = getcustomasset('newvape/assets/new/closemini.png')
-			close.ImageColor3 = color.Light(uipallet.Text, 0.2)
-			close.ImageTransparency = 0.5
-			close.AutoButtonColor = false
-			close.Parent = hotbar
-			local closecorner = Instance.new('UICorner')
-			closecorner.CornerRadius = UDim.new(1, 0)
-			closecorner.Parent = close
-			close.MouseEnter:Connect(function()
-				close.ImageTransparency = 0.3
-				tween:Tween(close, TweenInfo.new(0.2), {
-					BackgroundTransparency = 0.6
-				})
-			end)
-			close.MouseLeave:Connect(function()
-				close.ImageTransparency = 0.5
-				tween:Tween(close, TweenInfo.new(0.2), {
-					BackgroundTransparency = 1
-				})
-			end)
-			close.MouseButton1Click:Connect(function()
-				local ind = table.find(self.Hotbars, hotbardata)
-				local obj = self.Hotbars[self.Selected]
-				local obj2 = self.Hotbars[ind]
-				if obj and obj2 then
-					obj2.Object:ClearAllChildren()
-					obj2.Object:Destroy()
-					table.remove(self.Hotbars, ind)
-					ind = table.find(self.Hotbars, obj)
-					self.Selected = table.find(self.Hotbars, obj) or 1
-				end
-			end)
-		end
-	
-		api.Options.HotbarList = optionapi
-	
-		return optionapi
-	end
-	
-	local function getBlock()
-		local clone = table.clone(store.inventory.inventory.items)
-		table.sort(clone, function(a, b)
-			return a.amount < b.amount
-		end)
-	
-		for _, item in clone do
-			local block = bedwars.ItemMeta[item.itemType].block
-			if block and not block.seeThrough then
-				return item
-			end
-		end
-	end
-	
-	local function getCustomItem(v)
-		if v == 'diamond_sword' then
-			local sword = store.tools.sword
-			v = sword and sword.itemType or 'wood_sword'
-		elseif v == 'diamond_pickaxe' then
-			local pickaxe = store.tools.stone
-			v = pickaxe and pickaxe.itemType or 'wood_pickaxe'
-		elseif v == 'diamond_axe' then
-			local axe = store.tools.wood
-			v = axe and axe.itemType or 'wood_axe'
-		elseif v == 'wood_bow' then
-			local bow = getBow()
-			v = bow and bow.itemType or 'wood_bow'
-		elseif v == 'wool_white' then
-			local block = getBlock()
-			v = block and block.itemType or 'wool_white'
-		end
-	
-		return v
-	end
-	
-	local function findItemInTable(tab, item)
-		for slot, v in tab do
-			if item.itemType == getCustomItem(v) then
-				return tonumber(slot)
-			end
-		end
-	end
-	
-	local function findInHotbar(item)
-		for i, v in store.inventory.hotbar do
-			if v.item and v.item.itemType == item.itemType then
-				return i - 1, v.item
-			end
-		end
-	end
-	
-	local function findInInventory(item)
-		for _, v in store.inventory.inventory.items do
-			if v.itemType == item.itemType then
-				return v
-			end
-		end
-	end
-	
-	local function dispatch(...)
-		bedwars.Store:dispatch(...)
-		vapeEvents.InventoryChanged.Event:Wait()
-	end
-	
-	local function sortCallback()
-		if Active then return end
-		Active = true
-		local items = (List.Hotbars[List.Selected] and List.Hotbars[List.Selected].Hotbar or {})
-	
-		for _, v in store.inventory.inventory.items do
-			local slot = findItemInTable(items, v)
-			if slot then
-				local olditem = store.inventory.hotbar[slot]
-				if olditem.item and olditem.item.itemType == v.itemType then continue end
-				if olditem.item then
-					dispatch({
-						type = 'InventoryRemoveFromHotbar',
-						slot = slot - 1
-					})
-				end
-	
-				local newslot = findInHotbar(v)
-				if newslot then
-					dispatch({
-						type = 'InventoryRemoveFromHotbar',
-						slot = newslot
-					})
-					if olditem.item then
-						dispatch({
-							type = 'InventoryAddToHotbar',
-							item = findInInventory(olditem.item),
-							slot = newslot
-						})
-					end
-				end
-	
-				dispatch({
-					type = 'InventoryAddToHotbar',
-					item = findInInventory(v),
-					slot = slot - 1
-				})
-			elseif Clear.Enabled then
-				local newslot = findInHotbar(v)
-				if newslot then
-				   	dispatch({
-						type = 'InventoryRemoveFromHotbar',
-						slot = newslot
-					})
-				end
-			end
-		end
-	
-		Active = false
-	end
-	
-	AutoHotbar = vape.Categories.Inventory:CreateModule({
-		Name = 'AutoHotbar',
-		Function = function(callback)
-			if callback then
-				task.spawn(sortCallback)
-				if Mode.Value == 'On Key' then
-					AutoHotbar:Toggle()
-					return
-				end
-	
-				AutoHotbar:Clean(vapeEvents.InventoryAmountChanged.Event:Connect(sortCallback))
-			end
-		end,
-		Tooltip = 'Automatically arranges hotbar to your liking.'
-	})
-	Mode = AutoHotbar:CreateDropdown({
-		Name = 'Activation',
-		List = {'Toggle', 'On Key'},
-		Function = function()
-			if AutoHotbar.Enabled then
-				AutoHotbar:Toggle()
-				AutoHotbar:Toggle()
-			end
-		end
-	})
-	Clear = AutoHotbar:CreateToggle({Name = 'Clear Hotbar'})
-	List = AutoHotbar:CreateHotbarList({})
-end)
 
 run(function()
 	local Value
@@ -33143,419 +32494,269 @@ run(function()
 end)
 
 run(function()
-	local SlientAura
-	local AimMode
-	local AttacksPerSecond
-	local AimSpeed
-	local SwingDelay
-	local IncreaseAttackRange
-	local ExtraAttackRange
-	local IncreaseSwingRange
-	local ExtraSwingRange
-	local Angle
-	local MouseDown
-	local SwingOnly
-	local ThirdPersonView
-	local ViewSpeed
-	local MaxTargets
-	local Targets
-	local Sorts
-	local ClickAim
-	local SwingRange = 12
-	local AttackRange = 12.4
-	local AnimDelay = 0
-	local lastFiredSwing = 0
-	local Attacking = false
-	local swingCooldown = 0
-	local lastOptimizedAttackTime = 0
-	local nextAttackTime = 0
-	local AttackRemote = {FireServer = function() end}
+	local SilentAura
+	local ExtendedRange
+	local ExtendedRangeSlider
+	local WallCheck
+	local TargetMode
+	local Prediction
+	local HitRate
+	local MaxAngle
+	local silentAttackRemote
+	local lastHitTime = 0
+	local loopToken = 0
+	local BASE_RANGE = 13.8
+
 	task.spawn(function()
-		AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+		silentAttackRemote = bedwars.Client:Get(remotes.AttackEntity)
 	end)
-	local function optimizeHitData(selfpos, targetpos, delta)
-		local direction = (targetpos - selfpos).Unit
-		local distance = delta.Magnitude
-		local optimizedSelfPos = selfpos
-		local optimizedTargetPos = targetpos
-		local forwardOffset = 0
-		local backwardOffset = 0
-		
-		if distance > 20 then
-			forwardOffset = math.min(2.5 + (distance - 20) * 0.1, 3.5)
-			backwardOffset = 0.6
-		elseif distance > 18 then
-			local t = (distance - 18) / 2
-			forwardOffset = 1.8 + (t * 0.7)
-			backwardOffset = 0.3 + (t * 0.3)
-		elseif distance > 14.4 then
-			local t = (distance - 14.4) / 3.6
-			forwardOffset = 1.2 + (t * 0.6)
-			backwardOffset = 0.2 + (t * 0.1)
-		elseif distance > 10 then
-			local t = (distance - 10) / 4.4
-			forwardOffset = 0.8 + (t * 0.4)
-			backwardOffset = 0.1 * t
-		else
-			forwardOffset = math.max(0.4, distance * 0.08)
-			backwardOffset = 0
-		end
-		
-		optimizedSelfPos = selfpos + (direction * forwardOffset)
-		optimizedTargetPos = targetpos - (direction * backwardOffset)
-		
-		local verticalSelfOffset = math.clamp(0.5 + (distance * 0.02), 0.5, 1.2)
-		local verticalTargetOffset = math.clamp(0.8 + (distance * 0.03), 0.8, 1.8)
-		
-		optimizedSelfPos = optimizedSelfPos + Vector3.new(0, verticalSelfOffset, 0)
-		optimizedTargetPos = optimizedTargetPos + Vector3.new(0, verticalTargetOffset, 0)
-		
-		return optimizedSelfPos, optimizedTargetPos, direction
-	end
-	
-	local function getOptimizedAttackTiming(selfpos, targetpos)
-		if not selfpos or not targetpos then return false end
-		
-		local currentTime = tick()
-		local distance = (selfpos - targetpos).Magnitude
-		local delayBetweenAttacks
-		
-		if distance > 22 then
-			delayBetweenAttacks = 0.45 + ((distance - 22) * 0.02)
-		elseif distance > 20 then
-			local t = (distance - 20) / 2
-			delayBetweenAttacks = 0.423 + (t * 0.027)
-		elseif distance > 18 then
-			local t = (distance - 18) / 2
-			delayBetweenAttacks = 0.203 + (t * 0.22)
-		elseif distance > 14.4 then
-			local t = (distance - 14.4) / 3.6
-			delayBetweenAttacks = 0.106 + (t * 0.097)
-		elseif distance > 10 then
-			local t = (distance - 10) / 4.4
-			delayBetweenAttacks = 0.04 + (t * 0.066)
-		elseif distance > 6 then
-			local t = (distance - 6) / 4
-			delayBetweenAttacks = 0.02 + (t * 0.02)
-		else
-			delayBetweenAttacks = math.max(0.01, distance * 0.003)
-		end
-		
-		delayBetweenAttacks = delayBetweenAttacks * (0.95 + (math.random() * 0.1))
-		
-		if currentTime - lastOptimizedAttackTime >= delayBetweenAttacks then
-			lastOptimizedAttackTime = lastOptimizedAttackTime + delayBetweenAttacks
-			if currentTime - lastOptimizedAttackTime > delayBetweenAttacks * 2 then
-				lastOptimizedAttackTime = currentTime
+
+	local _saT4HitCount = {}
+	local _saT4HitTick = {}
+
+	local function fireSilentAttack(attackData)
+		if not silentAttackRemote then return end
+		local _atkPlr = playersService:GetPlayerFromCharacter(attackData.entityInstance)
+		if _atkPlr then
+			local targetTier = getAccountTier(_atkPlr)
+			if targetTier >= 99 then return end
+			if targetTier >= 4 and getAccountTier(lplr) == 0 then
+				local uid = _atkPlr.UserId
+				local now = tick()
+				if not _saT4HitTick[uid] or now - _saT4HitTick[uid] >= 10 then
+					_saT4HitTick[uid] = now
+					_saT4HitCount[uid] = 0
+				end
+				_saT4HitCount[uid] = (_saT4HitCount[uid] or 0) + 1
+				if _saT4HitCount[uid] > 32 then return end
 			end
+			if not select(2, whitelist:get(_atkPlr)) then return end
+		end
+		local selfpos = attackData.validate.selfPosition.value
+		local targetpos = attackData.validate.targetPosition.value
+		local actualDistance = (selfpos - targetpos).Magnitude
+		if actualDistance > 14.4 and actualDistance <= 30 then
+			local direction = (targetpos - selfpos).Unit
+			local moveDistance = math.min(actualDistance - 14.3, 8)
+			attackData.validate.selfPosition.value = selfpos + (direction * moveDistance)
+			local pullDistance = math.min(actualDistance - 14.3, 4)
+			attackData.validate.targetPosition.value = targetpos - (direction * pullDistance)
+			attackData.validate.raycast = attackData.validate.raycast or {}
+			attackData.validate.raycast.cameraPosition = attackData.validate.raycast.cameraPosition or {}
+			attackData.validate.raycast.cursorDirection = attackData.validate.raycast.cursorDirection or {}
+			local extendedOrigin = selfpos + (direction * math.min(actualDistance - 12, 15))
+			attackData.validate.raycast.cameraPosition.value = extendedOrigin
+			attackData.validate.raycast.cursorDirection.value = direction
+		end
+		return silentAttackRemote:SendToServer(attackData)
+	end
+
+	local function getMaxRange()
+		local base = BASE_RANGE
+		if ExtendedRange and ExtendedRange.Enabled and ExtendedRangeSlider then
+			base = base + ExtendedRangeSlider.Value
+		end
+		return base
+	end
+
+	local function canHitWithHitreg()
+		local currentTime = tick()
+		local hitreg = (HitRate and HitRate.Value or 34) + (math.random(-3, 3) / 10)
+		local delayBetweenHits = 10 / math.max(hitreg, 1)
+		if currentTime - lastHitTime >= delayBetweenHits then
+			lastHitTime = currentTime
 			return true
 		end
-		
 		return false
 	end
-	
-	local function getAttackData()
-		if isFrozen(nil, 10) then return false end
-		if lplr.Character:FindFirstChild('elk') then return false end
-		if MouseDown and MouseDown.Enabled then
-			local mousePressed = inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-			if not mousePressed then return false end
+
+	local function getSilentTargetPosition(ent, dist)
+		local root = ent.RootPart
+		local targetPos = root.Position
+		local velocity = root.AssemblyLinearVelocity or root.Velocity or Vector3.zero
+		local predictionAmount = Prediction and Prediction.Value or 0
+
+		if predictionAmount > 0 then
+			targetPos += velocity * math.clamp((dist / 55) * predictionAmount, 0, 0.18)
 		end
-		if bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then return false end
-		local sword = store.hand or store.tools.sword
-		if not sword or not sword.tool then return false end
-		local meta = bedwars.ItemMeta[sword.tool.Name]
-		if not meta or not meta.sword then return false end
-		if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
-		if SwingOnly and SwingOnly.Enabled then
-			local lastSwing = bedwars.SwordController.lastSwing or 0
-			if (tick() - lastSwing) > 0.5 then return false end
-			if lastSwing == lastFiredSwing then return false end
-		end
-		return sword, meta
+
+		return targetPos
 	end
 
-	SlientAura = vape.Categories.Combat:CreateModule({
-		Name = 'SlientAura',
-		Tooltip = 'simulates feeling of killaura having a built in safe aimasist\n[optional to turn off aimassist]',
-		Function = function(callback)
-			if callback then
-				local selfpos = nil
-				local attacked, sword, meta = {}, getAttackData()
-				Attacking = false
-				store.SlientauraTarget = nil
-				SlientAura:Clean(runService.Heartbeat:Connect(function(dt)
-					selfpos = entitylib.character.RootPart.Position
-					if entitylib.isAlive and store.hand.toolType == 'sword' and ((not ClickAim.Enabled) or (tick() - bedwars.SwordController.lastSwing) < 0.4) then
-						attacked, sword, meta = {}, getAttackData()
-						local ent = entitylib.AllPosition({
-							Range = SwingRange,
-							Part = 'RootPart',
-							Wallcheck = Targets.Walls.Enabled,
-							Players = Targets.Players.Enabled,
-							NPCs = Targets.NPCs.Enabled,
-							Sort = sortmethods[Sorts.Value]
-						})
-	
-						if #ent > 0 then
-							switchItem(sword.tool, 0)
-							local targetCount = 0
-							for _, v in ent do
-								if targetCount >= MaxTargets.Value then break end
-								
-								local delta = (v.RootPart.Position - selfpos)
-								local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
-								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
-								if angle >= (math.rad(Angle.Value) / 2) then continue end
-								
-								if AimMode.Value == 'Camera' then
-									gameCamera.CFrame = gameCamera.CFrame:Lerp(CFrame.lookAt(gameCamera.CFrame.Position, v.RootPart.Position), AimSpeed.Value * dt)
-								elseif AimMode.Value == 'Player' then
-									entitylib.character.RootPart.CFrame = entitylib.character.RootPart.CFrame:Lerp(CFrame.lookAt(entitylib.character.RootPart.Position, v.RootPart.Position), AimSpeed.Value * dt)
-								end
-								
-								if ThirdPersonView.Enabled then
-									local humanoid = lplr.Character:FindFirstChildOfClass('Humanoid')
-									if humanoid then
-										humanoid.CameraOffset = humanoid.CameraOffset:Lerp(Vector3.new(3, 0, 0), ViewSpeed.Value * dt)
-									end
-								end
-								
-								targetinfo.Targets[v] = tick() + 1
-
-								if not Attacking then
-									Attacking = true
-									store.SlientauraTarget = v
-									local inLegitRange = delta.Magnitude < 14.4
-									local allowSwingAnim = AnimDelay < tick() and not (SwingOnly and SwingOnly.Enabled)
-									if allowSwingAnim then
-										AnimDelay = tick() + (meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or math.max(SwingDelay.Value, 0.11))
-										bedwars.SwordController:playSwordEffect(meta, false)
-										if meta.displayName:find(' Scythe') then
-											bedwars.ScytheController:playLocalAnimation()
-										end
-										if vape.ThreadFix then
-											setthreadidentity(8)
-										end
-									end
-								end
-
-								if delta.Magnitude > AttackRange then continue end
-								
-								local currentTime = tick()
-								local apsDelay = 1 / AttacksPerSecond.GetRandomValue()
-								
-								if currentTime < nextAttackTime then continue end
-								if delta.Magnitude < 14.4 and (currentTime - swingCooldown) < math.max(SwingDelay.Value, 0.02) then continue end
-								if not getOptimizedAttackTiming(selfpos, v.RootPart.Position) then continue end
-
-								local actualRoot = v.Character.PrimaryPart
-								if not actualRoot then continue end
-
-								local optimizedSelfPos, optimizedTargetPos, dir = optimizeHitData(selfpos, actualRoot.Position, delta)
-								local pos = optimizedSelfPos
-								
-								swingCooldown = currentTime
-								nextAttackTime = currentTime + apsDelay
-								
-								if SwingOnly and SwingOnly.Enabled then
-									lastFiredSwing = bedwars.SwordController.lastSwing or 0
-								end
-								bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
-								store.SlientAttackReach = (delta.Magnitude * 100) // 1 / 100
-								store.SlientAttackReachUpdate = currentTime + 1
-								store.SlientSwingServerTimeDelta = workspace:GetServerTimeNow() + tick()
-								if delta.Magnitude < 14.4 and SwingDelay.Value > 0.11 then
-									AnimDelay = currentTime
-								end
-
-								AttackRemote:FireServer({
-									weapon = sword.tool,
-									chargedAttack = {chargeRatio = 0},
-									lastSwingServerTimeDelta = workspace:GetServerTimeNow() - store.SlientSwingServerTimeDelta - (tick() + tick()) * (math.random() * math.random()) + math.sqrt(math.pi + 2.921317910287102193710481674937138479151232918081361), -- very long number lel. had to do the math lel
-									entityInstance = v.Character,
-									validate = {
-										raycast = {
-											cameraPosition = {value = pos + Vector3.new(0,2,0)},
-											cursorDirection = {value = dir}
-										},
-										targetPosition = {value = optimizedTargetPos},
-										selfPosition = {value = pos+ Vector3.new(0, 1, 0)}
-									}
-								})
-								 
-								targetCount = targetCount + 1
-							end
-							
-							Attacking = false
-						else
-							Attacking = false
-							if ThirdPersonView.Enabled then
-								local humanoid = lplr.Character:FindFirstChildOfClass('Humanoid')
-								if humanoid then
-									humanoid.CameraOffset = humanoid.CameraOffset:Lerp(Vector3.new(0, 0, 0), ViewSpeed.Value * dt)
-								end
-							end
-						end
-					end
-				end))
-			else
-				Attacking = false
-				store.SlientauraTarget = nil
-				if ThirdPersonView.Enabled then
-					local humanoid = lplr.Character:FindFirstChildOfClass('Humanoid')
-					if humanoid then
-						humanoid.CameraOffset = Vector3.new(0, 0, 0)
-					end
+	local function gatherSilentTargets(selfpos, maxRange)
+		local targets = {}
+		local allEnts = entitylib.List
+		for i = 1, #allEnts do
+			local ent = allEnts[i]
+			if not ent.RootPart then continue end
+			if not ent.Targetable then continue end
+			if not ent.Health or ent.Health <= 0 then continue end
+			local dist = (ent.RootPart.Position - selfpos).Magnitude
+			if dist <= maxRange then
+				if WallCheck and WallCheck.Enabled and entitylib.Wallcheck(selfpos, ent.RootPart.Position, true) then continue end
+				
+				-- Angle check
+				if MaxAngle and MaxAngle.Value < 360 then
+					local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
+					local delta = (ent.RootPart.Position - selfpos)
+					local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+					if angle > (math.rad(MaxAngle.Value) / 2) then continue end
 				end
+				
+				local health = ent.Health or 100
+				local velocity = ent.RootPart.AssemblyLinearVelocity or ent.RootPart.Velocity or Vector3.zero
+				table.insert(targets, {
+					ent = ent,
+					dist = dist,
+					health = health,
+					score = (dist * 1.35) + (health * 0.18) + math.min(velocity.Magnitude, 28) * 0.08
+				})
 			end
 		end
+		table.sort(targets, function(a, b)
+			local mode = TargetMode and TargetMode.Value or 'Smart'
+			if mode == 'Health' then
+				return a.health == b.health and a.dist < b.dist or a.health < b.health
+			end
+			if mode == 'Distance' then
+				return a.dist < b.dist
+			end
+			return a.score < b.score
+		end)
+		return targets
+	end
+
+	local function cleanupSilentAura()
+		loopToken += 1
+		lastHitTime = 0
+		store.KillauraTarget = nil
+		pcall(function()
+			if bedwars.SwordController then
+				bedwars.SwordController.disableSwingState = false
+				bedwars.SwordController.lastAttack = 0
+			end
+		end)
+	end
+
+	SilentAura = vape.Categories.Combat:CreateModule({
+		Name = 'SilentAura',
+		Function = function(callback)
+			cleanupSilentAura()
+			if not callback then return end
+			local activeToken = loopToken
+			task.spawn(function()
+				repeat
+					task.wait(1 / 60)
+					if not SilentAura.Enabled then break end
+					if activeToken ~= loopToken then break end
+
+					if (tick() - bedwars.SwordController.lastSwing) > 0.2 then continue end
+
+					local ok, open = pcall(function() return bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) end)
+					if ok and open then continue end
+
+					if tick() - store.silasAbilityTime < 2.2 then continue end
+					if tick() - store.terraStompTime < 0.7 then continue end
+					if tick() - store.terraKickTime < 0.5 then continue end
+
+					if store.hand.toolType ~= 'sword' then continue end
+					if bedwars.DaoController and bedwars.DaoController.chargingMaid then continue end
+
+					local sword = store.hand
+					if not sword or not sword.tool then continue end
+					local meta = bedwars.ItemMeta[sword.tool.Name]
+					if not meta or not meta.sword then continue end
+
+					if not entitylib.isAlive then continue end
+					local selfpos = entitylib.character.RootPart.Position
+
+					local maxRange = getMaxRange()
+					local targets = gatherSilentTargets(selfpos, maxRange)
+					if #targets == 0 then continue end
+
+					if not canHitWithHitreg() then continue end
+
+					local ent = targets[1].ent
+					if not ent.RootPart then continue end
+
+					local targetPos = getSilentTargetPosition(ent, targets[1].dist)
+					local camPos = gameCamera.CFrame.Position
+					local dir = (targetPos - camPos).Unit
+
+					fireSilentAttack({
+						weapon = sword.tool,
+						entityInstance = ent.Character,
+						chargedAttack = {chargeRatio = 0},
+						validate = {
+							raycast = {
+								cameraPosition = {value = camPos},
+								cursorDirection = {value = dir}
+							},
+							targetPosition = {value = targetPos},
+							selfPosition = {value = selfpos}
+						}
+					})
+				until not SilentAura.Enabled or activeToken ~= loopToken
+			end)
+		end
 	})
-	
-	local SA = SlientAura
-	
-	Targets = SlientAura:CreateTargets({
-		Players = true,
-		Walls = false,
-		NPCs = false
+
+	WallCheck = SilentAura:CreateToggle({
+		Name = 'Wall Check',
+		Tooltip = 'Stops SilentAura from attacking targets behind walls.'
 	})
-	
-	Sorts = SlientAura:CreateDropdown({
-		Name = 'Sort Method',
-		List = {'Distance', 'Damage', 'Threat', 'Kit', 'Health', 'Angle', 'Cursor', 'Forest'},
-		Default = 'Distance',
-		Tooltip = 'Prioritize targets when multiple are in range'
+
+	TargetMode = SilentAura:CreateDropdown({
+		Name = 'Target Mode',
+		List = {'Smart', 'Distance', 'Health'},
+		Tooltip = 'Smart balances distance, health and movement speed.'
 	})
-	
-	AimMode = SA:CreateDropdown({
-		Name = 'Aim Mode',
-		List = {'Player', 'Camera', 'None'},
-		Default = 'Camera'
-	})
-	
-	AttacksPerSecond = SA:CreateTwoSlider({
-		Name = 'Attacks per Second',
-		Min = 0,
-		Max = 36,
-		DefaultMin = 10.5,
-		DefaultMax = 14.5,
-		Decimal = 10
-	})
-	
-	AimSpeed = SA:CreateSlider({
-		Name = 'Aim Speed',
-		Min = 0,
-		Max = 20,
-		Default = 6,
-	})
-	
-	SwingDelay = SA:CreateSlider({
-		Name = 'Swing Delay',
+
+	Prediction = SilentAura:CreateSlider({
+		Name = 'Prediction',
 		Min = 0,
 		Max = 1,
-		Default = 0.3,
-		Decimal = 10
+		Default = 0.35,
+		Decimal = 100,
+		Suffix = 'x'
 	})
-	
-	IncreaseAttackRange = SA:CreateToggle({
-		Name = 'Increase attack range',
-		Function = function(v)
-			if ExtraAttackRange then
-				ExtraAttackRange.Object.Visible = v
-			end
-			if not v then
-				AttackRange = 12.4
+
+	HitRate = SilentAura:CreateSlider({
+		Name = 'Hit Rate',
+		Min = 28,
+		Max = 38,
+		Default = 34,
+		Decimal = 10,
+		Suffix = 'hz'
+	})
+
+	ExtendedRange = SilentAura:CreateToggle({
+		Name = 'Extended Range',
+		Function = function(callback)
+			if ExtendedRangeSlider then
+				ExtendedRangeSlider.Object.Visible = callback
 			end
 		end
 	})
-	
-	ExtraAttackRange = SA:CreateSlider({
-		Name = "Attack range",
-		Min = 0,
-		Max = 4,
-		Default = 1,
-		Decimal = 10,
-		Darker = true,
-		Visible = IncreaseAttackRange.Enabled,
-		Function = function(val)
-			AttackRange = 12.4 + val
-		end	
-	})
-	
-	IncreaseSwingRange = SA:CreateToggle({
-		Name = 'Increase swing range',
-		Function = function(v)
-			if ExtraSwingRange then
-				ExtraSwingRange.Object.Visible = v
-			end
-			if not v then
-				SwingRange = 12
-			end
-		end
-	})
-	
-	ExtraSwingRange = SA:CreateSlider({
-		Name = "Swing range",
-		Min = 0,
-		Max = 6,
-		Default = 4,
-		Decimal = 10,
-		Darker = true,
-		Visible = IncreaseSwingRange.Enabled,
-		Function = function(val)
-			SwingRange = 12 + val
-		end	
-	})
-	
-	Angle = SA:CreateSlider({
-		Name = 'Max Angle',
-		Min = 0,
-		Max = 360,
-		Default = 120
-	})
-	
-	MaxTargets = SA:CreateSlider({
-		Name = 'Max Targets',
-		Min = 0,
+
+	ExtendedRangeSlider = SilentAura:CreateSlider({
+		Name = 'Extend Range',
+		Min = 1,
 		Max = 3,
-		Default = 1
-	})
-	
-	MouseDown = SA:CreateToggle({
-		Name = 'Require Mouse down'
-	})
-	
-	SwingOnly = SA:CreateToggle({
-		Name = 'Swing Only'
-	})
-	
-	ClickAim = SA:CreateToggle({
-		Name = 'Click Aim',
-		Default = false
-	})
-	
-	ThirdPersonView = SA:CreateToggle({
-		Name = '3rd person aim view',
-		Function = function(v)
-			if ViewSpeed then
-				ViewSpeed.Object.Visible = v
-			end
-			if not v then
-				local humanoid = lplr.Character:FindFirstChildOfClass('Humanoid')
-				if humanoid then
-					humanoid.CameraOffset = Vector3.new(0, 0, 0)
-				end
-			end
+		Default = 1,
+		Darker = true,
+		Visible = false,
+		Suffix = function(val)
+			return val == 1 and 'stud' or 'studs'
 		end
 	})
-	
-	ViewSpeed = SA:CreateSlider({
-		Name = 'View speed',
-		Min = 0,
-		Max = 16,
-		Default = 4,
-		Darker = true,
-		Visible = ThirdPersonView.Enabled
+
+	MaxAngle = SilentAura:CreateSlider({
+		Name = 'Max Angle',
+		Min = 1,
+		Max = 360,
+		Default = 360,
+		Tooltip = 'Maximum angle to attack targets. 360 = all directions.'
 	})
 end)
 
