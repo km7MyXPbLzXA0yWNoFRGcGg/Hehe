@@ -33083,43 +33083,13 @@ run(function()
         return false
     end
 
-    local kdFaces = {
-        Vector3.new(3, 0, 0),
-        Vector3.new(-3, 0, 0),
-        Vector3.new(0, 3, 0),
-        Vector3.new(0, -3, 0),
-        Vector3.new(0, 0, 3),
-        Vector3.new(0, 0, -3)
-    }
-
-    local function getBedHitInfo(bed)
+    local function isBedVisible(bed)
         local handler = bedwars.BlockController:getHandlerRegistry():getHandler(bed.Name)
         local positions = handler and handler:getContainedPositions(bed) or {bed.Position / 3}
         for _, gridPos in positions do
-            local worldPos = gridPos * 3
-            for _, face in kdFaces do
-                local neighbor = getPlacedBlock(worldPos + face)
-                if not neighbor or neighbor == bed then
-                    local normal = face.Unit
-                    local facePoint = worldPos + (normal * 1.5)
-                    if isVisible(facePoint) then
-                        return {
-                            gridPos = gridPos,
-                            hitPosition = facePoint,
-                            hitNormal = normal
-                        }
-                    end
-                end
-            end
-
-            if isVisible(worldPos) then
-                return {
-                    gridPos = gridPos,
-                    hitPosition = worldPos,
-                    hitNormal = Vector3.FromNormalId(Enum.NormalId.Top)
-                }
-            end
+            if isVisible(gridPos * 3) then return true end
         end
+        return false
     end
 
     local function eligible(block)
@@ -33145,36 +33115,18 @@ run(function()
         if not meta or not meta.block then return end
         local tool = store.tools[meta.block.breakType]
         if not tool then return end
-        local switched = false
-        for i, v in store.inventory.hotbar do
-            if v.item and v.item.tool == tool.tool then
-                if i ~= (store.inventory.hotbarSlot + 1) then
-                    hotbarSwitch(i - 1)
-                end
-                switched = true
-                break
-            end
-        end
-        if not switched then
-            switchItem(tool.tool)
+        local slot = getHotbar(tool.tool)
+        if slot and store.inventory.hotbarSlot ~= slot then
+            bedwars.Store:dispatch({
+                type = 'InventorySelectHotbarSlot',
+                slot = slot
+            })
         end
     end
 
     local function readHP(block, gridPos)
         local data = bedwars.BlockController:getStore():getBlockData(gridPos)
         return data and (data:GetAttribute('1') or data:GetAttribute('Health')) or block:GetAttribute('Health') or block:GetAttribute('MaxHealth') or 0
-    end
-
-    local function getKDBlockHits(block, blockPos)
-        if not block then return 0 end
-        local meta = bedwars.ItemMeta[block.Name]
-        local breakType = meta and meta.block and meta.block.breakType
-        if not breakType then return 1 end
-        local tool = store.tools[breakType]
-        local toolMeta = tool and bedwars.ItemMeta[tool.itemType]
-        local breakPower = toolMeta and toolMeta.breakBlock and toolMeta.breakBlock[breakType] or 2
-        local health = readHP(block, bedwars.BlockController:getBlockPosition(blockPos))
-        return health / math.max(breakPower, 0.001)
     end
 
     local function spawnBar(block)
@@ -33249,10 +33201,10 @@ run(function()
         end
     end
 
-    local function strike(block, hitInfo)
+    local function strike(block)
         if lplr:GetAttribute('DenyBlockBreak') or not entitylib.isAlive or InfiniteFly.Enabled then return false end
 
-        local gridPos = hitInfo and hitInfo.gridPos or bedwars.BlockController:getBlockPosition(block.Position)
+        local gridPos = bedwars.BlockController:getBlockPosition(block.Position)
         equipFor(block)
 
         local curHP = readHP(block, gridPos)
@@ -33265,22 +33217,20 @@ run(function()
             hp.max = maxHP
         end
 
-        local hitNormal = hitInfo and hitInfo.hitNormal
-        if not hitNormal then
-            local dir = entitylib.character.RootPart.Position - block.Position
-            local ax, ay, az = math.abs(dir.X), math.abs(dir.Y), math.abs(dir.Z)
-            if ay >= ax and ay >= az then
-                hitNormal = Vector3.new(0, dir.Y > 0 and 1 or -1, 0)
-            elseif ax >= az then
-                hitNormal = Vector3.new(dir.X > 0 and 1 or -1, 0, 0)
-            else
-                hitNormal = Vector3.new(0, 0, dir.Z > 0 and 1 or -1)
-            end
+        local dir = entitylib.character.RootPart.Position - block.Position
+        local ax, ay, az = math.abs(dir.X), math.abs(dir.Y), math.abs(dir.Z)
+        local hitNormal
+        if ay >= ax and ay >= az then
+            hitNormal = Vector3.new(0, dir.Y > 0 and 1 or -1, 0)
+        elseif ax >= az then
+            hitNormal = Vector3.new(dir.X > 0 and 1 or -1, 0, 0)
+        else
+            hitNormal = Vector3.new(0, 0, dir.Z > 0 and 1 or -1)
         end
 
         bedwars.ClientDamageBlock:Get('DamageBlock'):CallServerAsync({
             blockRef = {blockPosition = gridPos},
-            hitPosition = hitInfo and hitInfo.hitPosition or block.Position + hitNormal * 1.5,
+            hitPosition = block.Position + hitNormal * 1.5,
             hitNormal = hitNormal
         }):andThen(function(result)
             if not result then return end
@@ -33344,15 +33294,17 @@ run(function()
 
                 local exposed = false
                 for _, dir in sides do
+                    local nb
+                    local h, nc
                     local np = pick[2] + dir
                     if seen[np] then continue end
-                    local nb = getPlacedBlock(np)
+                    nb = getPlacedBlock(np)
                     if not nb or nb:GetAttribute('NoBreak') or nb == bed then
                         if not nb then exposed = true end
                         continue
                     end
-                    local h = useDistance and (origin - Vector3.new(np.X, origin.Y, np.Z)).Magnitude or getKDBlockHits(nb, np)
-                    local nc = pick[1] + h
+                    h = useDistance and (origin - Vector3.new(np.X, origin.Y, np.Z)).Magnitude or getBlockHits(nb, np)
+                    nc = pick[1] + h
                     if nc < (costs[np] or math.huge) then
                         costs[np] = nc
                         prev[np] = pick[2]
@@ -33387,9 +33339,9 @@ run(function()
             local block = getPlacedBlock(pos)
             if block and not block:GetAttribute('NoBreak') then
                 if useDistance and origin then
-                    total += (origin - Vector3.new(pos.X, origin.Y, pos.Z)).Magnitude
+                    total = total + (origin - Vector3.new(pos.X, origin.Y, pos.Z)).Magnitude
                 else
-                    total += getKDBlockHits(block, pos)
+                    total = total + getBlockHits(block, pos)
                 end
             end
         end
@@ -33420,7 +33372,7 @@ run(function()
             pathParts[idx].Position = entry
             pathParts[idx].Box.Color3 = Color3.fromRGB(255, 50, 50)
             pathParts[idx].Box.SurfaceColor3 = Color3.fromRGB(255, 50, 50)
-            idx += 1
+            idx = idx + 1
         end
         if route then
             for _, pos in route do
@@ -33429,14 +33381,14 @@ run(function()
                 pathParts[idx].Position = pos
                 pathParts[idx].Box.Color3 = Color3.fromRGB(50, 255, 50)
                 pathParts[idx].Box.SurfaceColor3 = Color3.fromRGB(50, 255, 50)
-                idx += 1
+                idx = idx + 1
             end
         end
         if anchor and idx <= #pathParts then
             pathParts[idx].Position = anchor
             pathParts[idx].Box.Color3 = Color3.fromRGB(50, 80, 255)
             pathParts[idx].Box.SurfaceColor3 = Color3.fromRGB(50, 80, 255)
-            idx += 1
+            idx = idx + 1
         end
         for i = idx, #pathParts do
             pathParts[i].Position = Vector3.new(0, -9999, 0)
@@ -33499,6 +33451,7 @@ run(function()
                 local lastBedVis = false
 
                 repeat
+                    local origin, bestBed, bestDist, bedVis, freshEntry, freshRoute, freshAnchor, freshCost, useStored
                     if not KingDraco.Enabled then break end
                     if not entitylib.isAlive then
                         clearPath()
@@ -33512,14 +33465,15 @@ run(function()
                         continue
                     end
 
-                    local origin = entitylib.character.RootPart.Position
+                    origin = entitylib.character.RootPart.Position
                     refreshFilter()
 
-                    local bestBed, bestDist = nil, math.huge
+                    bestBed, bestDist = nil, math.huge
                     for _, b in beds do
+                        local d
                         if not b or not b.Parent then continue end
                         if not eligible(b) then continue end
-                        local d = (b.Position - origin).Magnitude
+                        d = (b.Position - origin).Magnitude
                         if d < RangeSetting.Value and d < bestDist then
                             bestBed, bestDist = b, d
                         end
@@ -33567,8 +33521,7 @@ run(function()
 
                     bedGlow.Adornee = bestBed
 
-                    local bedHitInfo = getBedHitInfo(bestBed)
-                    local bedVis = bedHitInfo ~= nil
+                    bedVis = isBedVisible(bestBed)
                     if bedVis and not lastBedVis then
                         store.damageBlockFail = 0
                     end
@@ -33578,35 +33531,19 @@ run(function()
                         dbg('[KD] bed=' .. bestBed.Name .. ' dist=' .. math.floor(dist) .. ' visible=' .. tostring(bedVis) .. ' failCD=' .. tostring(store.damageBlockFail > tick()))
                     end
 
-                    if bedVis then
+                    if bedVis and store.damageBlockFail <= tick() then
                         store._routePositions = nil
                         store._routeAnchor = nil
                         store._lockedDefenseBlock = nil
                         targetGlow.Adornee = bestBed
                         if PathOverlay.Enabled then clearPath() end
-                        if store.damageBlockFail <= tick() then
-                            strike(bestBed, bedHitInfo)
-                            if DebugMode and DebugMode.Enabled then dbg('[KD] strike bed (visible)') end
-                        elseif DebugMode and DebugMode.Enabled then
-                            dbg('[KD] visible bed retry cooldown')
-                        end
-
-                        -- small delay to allow strike()'s server response to set damageBlockFail if cancelled
-                        task.wait(0.05)
-
-                        -- fallback: if the direct strike was cancelled, try bedwars.breakBlock (Breaker) if enabled
-                        if store.damageBlockFail > tick() and BreakerFallback and BreakerFallback.Enabled then
-                            if not ItemLimit.Enabled or (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then
-                                bedwars.breakBlock(bestBed, EffectsOn.Enabled, Anim.Enabled, nil, ToolSwitch.Enabled)
-                                if DebugMode and DebugMode.Enabled then dbg('[KD] breaker fallback on visible bed') end
-                            end
-                        end
-
+                        strike(bestBed)
+                        if DebugMode and DebugMode.Enabled then dbg('[KD] strike bed (visible)') end
                         task.wait(QuickBreak.Enabled and 0 or 0.25)
                         continue
                     end
 
-                    if BreakerFallback and BreakerFallback.Enabled and store.damageBlockFail > tick() then
+                    if BreakerFallback and BreakerFallback.Enabled and bedVis then
                         if not ItemLimit.Enabled or (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then
                             targetGlow.Adornee = bestBed
                             if PathOverlay.Enabled then clearPath() end
@@ -33634,9 +33571,9 @@ run(function()
                         end
                     end
 
-                    local freshEntry, freshRoute, freshAnchor, freshCost = planAttack(bestBed, origin)
+                    freshEntry, freshRoute, freshAnchor, freshCost = planAttack(bestBed, origin)
 
-                    local useStored = false
+                    useStored = false
                     if store._routePositions and #store._routePositions > 0 then
                         local storedCost = getRouteCost(store._routePositions, origin)
                         local firstBlock = getPlacedBlock(store._routePositions[1])
@@ -33704,7 +33641,7 @@ run(function()
                         end
                     elseif bedVis then
                         targetGlow.Adornee = bestBed
-                        strike(bestBed, bedHitInfo)
+                        strike(bestBed)
                         if DebugMode and DebugMode.Enabled then dbg('[KD] strike bed (no defense found)') end
                         task.wait(QuickBreak.Enabled and 0 or 0.25)
                         continue
