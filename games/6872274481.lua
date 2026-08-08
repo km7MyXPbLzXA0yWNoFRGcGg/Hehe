@@ -33052,6 +33052,8 @@ run(function()
         if #debugLog > MAX_LOG then table.remove(debugLog, 1) end
     end
 
+    local gameCamera = workspace.CurrentCamera
+
     local function refreshFilter()
         if not losFilter then
             losFilter = RaycastParams.new()
@@ -33059,29 +33061,42 @@ run(function()
             losFilter.RespectCanCollide = false
         end
         local list = {}
-        for _, b in store.blocks do
-            if b and b.Parent then table.insert(list, b) end
+        if store and store.blocks then
+            for _, b in ipairs(store.blocks) do
+                if b and b.Parent then table.insert(list, b) end
+            end
         end
         losFilter.FilterDescendantsInstances = list
     end
 
     local function isVisible(worldPos)
-        local eye = gameCamera.CFrame.Position
-        for _, off in {
+        local cam = workspace.CurrentCamera or gameCamera
+        if not cam then return false end
+        local eye = cam.CFrame.Position
+        for _, off in ipairs({
             Vector3.zero,
             Vector3.new(1.35, 0, 0), Vector3.new(-1.35, 0, 0),
             Vector3.new(0, 1.35, 0), Vector3.new(0, -1.35, 0),
             Vector3.new(0, 0, 1.35), Vector3.new(0, 0, -1.35)
-        } do
+        }) do
             local probe = worldPos + off
             local ray = probe - eye
             local hit = workspace:Raycast(eye, ray, losFilter)
             if not hit then return true end
             if (hit.Position - eye).Magnitude >= ray.Magnitude - 1.5 then return true end
-            if hit.Instance and (hit.Instance.Position - worldPos).Magnitude < 2.5 then return true end
+            if hit.Instance and hit.Instance.Position and (hit.Instance.Position - worldPos).Magnitude < 2.5 then return true end
         end
         return false
     end
+
+    local sides = {
+        Vector3.new(1,0,0),
+        Vector3.new(-1,0,0),
+        Vector3.new(0,1,0),
+        Vector3.new(0,-1,0),
+        Vector3.new(0,0,1),
+        Vector3.new(0,0,-1)
+    }
 
     local kdFaces = {
         Vector3.new(3, 0, 0),
@@ -33092,12 +33107,16 @@ run(function()
         Vector3.new(0, 0, -3)
     }
 
+    local function keyPos(v)
+        return string.format("%d,%d,%d", v.X, v.Y, v.Z)
+    end
+
     local function getBedHitInfo(bed)
         local handler = bedwars.BlockController:getHandlerRegistry():getHandler(bed.Name)
         local positions = handler and handler:getContainedPositions(bed) or {bed.Position / 3}
-        for _, gridPos in positions do
+        for _, gridPos in ipairs(positions) do
             local worldPos = gridPos * 3
-            for _, face in kdFaces do
+            for _, face in ipairs(kdFaces) do
                 local neighbor = getPlacedBlock(worldPos + face)
                 if not neighbor or neighbor == bed then
                     local normal = face.Unit
@@ -33143,20 +33162,33 @@ run(function()
         if (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) <= 0.4 then return end
         local meta = bedwars.ItemMeta[block.Name]
         if not meta or not meta.block then return end
-        local tool = store.tools[meta.block.breakType]
-        if not tool then return end
-        local switched = false
-        for i, v in store.inventory.hotbar do
-            if v.item and v.item.tool == tool.tool then
-                if i ~= (store.inventory.hotbarSlot + 1) then
-                    hotbarSwitch(i - 1)
-                end
-                switched = true
-                break
+        local toolInfo = store.tools and store.tools[meta.block.breakType]
+        if not toolInfo then return end
+
+        -- Prefer existing helper getHotbar if available, fallback to scanning inventory
+        if typeof(getHotbar) == "function" then
+            local slot = getHotbar(toolInfo.tool)
+            if slot and store.inventory.hotbarSlot ~= slot then
+                bedwars.Store:dispatch({ type = 'InventorySelectHotbarSlot', slot = slot })
+                return
             end
         end
-        if not switched then
-            switchItem(tool.tool)
+
+        if store and store.inventory and store.inventory.hotbar then
+            for i, v in ipairs(store.inventory.hotbar) do
+                if v and v.item and v.item.tool == toolInfo.tool then
+                    local wantedSlot = i - 1
+                    if store.inventory.hotbarSlot ~= wantedSlot then
+                        bedwars.Store:dispatch({ type = 'InventorySelectHotbarSlot', slot = wantedSlot })
+                    end
+                    return
+                end
+            end
+        end
+
+        -- final fallback: try a generic switchItem if present
+        if typeof(switchItem) == "function" then
+            switchItem(toolInfo.tool)
         end
     end
 
@@ -33170,15 +33202,17 @@ run(function()
         local meta = bedwars.ItemMeta[block.Name]
         local breakType = meta and meta.block and meta.block.breakType
         if not breakType then return 1 end
-        local tool = store.tools[breakType]
+        local tool = store.tools and store.tools[breakType]
         local toolMeta = tool and bedwars.ItemMeta[tool.itemType]
-        local breakPower = toolMeta and toolMeta.breakBlock and toolMeta.breakBlock[breakType] or 2
+        local breakPower = (toolMeta and toolMeta.breakBlock and toolMeta.breakBlock[breakType]) or 2
         local health = readHP(block, bedwars.BlockController:getBlockPosition(blockPos))
         return health / math.max(breakPower, 0.001)
     end
 
     local function spawnBar(block)
         if hp.gui then hp.gui:Destroy() end
+        local cam = workspace.CurrentCamera or gameCamera
+        if not cam then return end
 
         local bb = Instance.new('BillboardGui')
         bb.Size = UDim2.fromOffset(120, 22)
@@ -33222,7 +33256,7 @@ run(function()
         fc.CornerRadius = UDim.new(1, 0)
         fc.Parent = fill
 
-        bb.Parent = gameCamera
+        bb.Parent = cam
         hp.gui = bb
         hp.fill = fill
         hp.block = block
@@ -33283,37 +33317,40 @@ run(function()
             hitPosition = hitInfo and hitInfo.hitPosition or block.Position + hitNormal * 1.5,
             hitNormal = hitNormal
         }):andThen(function(result)
-            if not result then return end
-            if result == 'cancelled' then
-                store.damageBlockFail = tick() + 0.3
-                return
-            end
-
-            if EffectsOn.Enabled then
-                local afterHP = readHP(block, gridPos)
-                local dmg = hp.current - (result == 'destroyed' and 0 or afterHP)
-                hp.current = math.max(hp.current - dmg, 0)
-
-                if hp.max > 0 then
-                    tweenBar(hp.current / hp.max)
+            local ok, err = pcall(function()
+                if not result then return end
+                if result == 'cancelled' then
+                    store.damageBlockFail = tick() + 0.3
+                    return
                 end
 
-                if hp.current <= 0 then
-                    pcall(function() bedwars.BlockBreaker.breakEffect:playBreak(block.Name, gridPos, lplr) end)
-                    killBar()
-                else
-                    pcall(function() bedwars.BlockBreaker.breakEffect:playHit(block.Name, gridPos, lplr) end)
-                end
-            end
+                if EffectsOn.Enabled then
+                    local afterHP = readHP(block, gridPos)
+                    local dmg = hp.current - (result == 'destroyed' and 0 or afterHP)
+                    hp.current = math.max(hp.current - dmg, 0)
 
-            if Anim.Enabled then
-                task.spawn(function()
-                    local a = bedwars.AnimationUtil:playAnimation(lplr, bedwars.BlockController:getAnimationController():getAssetId(1))
-                    bedwars.ViewmodelController:playAnimation(15)
-                    task.wait(0.3)
-                    if a then a:Stop() a:Destroy() end
-                end)
-            end
+                    if hp.max > 0 then
+                        tweenBar(hp.current / hp.max)
+                    end
+
+                    if hp.current <= 0 then
+                        pcall(function() bedwars.BlockBreaker.breakEffect:playBreak(block.Name, gridPos, lplr) end)
+                        killBar()
+                    else
+                        pcall(function() bedwars.BlockBreaker.breakEffect:playHit(block.Name, gridPos, lplr) end)
+                    end
+                end
+
+                if Anim.Enabled then
+                    task.spawn(function()
+                        local a = bedwars.AnimationUtil:playAnimation(lplr, bedwars.BlockController:getAnimationController():getAssetId(1))
+                        bedwars.ViewmodelController:playAnimation(15)
+                        task.wait(0.3)
+                        if a then a:Stop() a:Destroy() end
+                    end)
+                end
+            end)
+            if not ok then warn("KingDraco strike callback error: "..tostring(err)) end
         end)
         return true
     end
@@ -33324,40 +33361,41 @@ run(function()
         local best = {entry = nil, cost = math.huge, route = nil, anchor = nil}
         local useDistance = BreakMode and BreakMode.Value == 'Distance'
 
-        for _, cp in contained do
+        for _, cp in ipairs(contained) do
             local anchor = cp * 3
             local seen = {}
             local frontier = {{0, anchor}}
             local costs = {}
-            costs[anchor] = 0
+            costs[keyPos(anchor)] = 0
             local prev = {}
 
             for _ = 1, 5000 do
                 local pick, pickI = nil, nil
-                for i, f in frontier do
-                    if not seen[f[2]] and (not pick or f[1] < pick[1]) then
+                for i, f in ipairs(frontier) do
+                    if not seen[keyPos(f[2])] and (not pick or f[1] < pick[1]) then
                         pick, pickI = f, i
                     end
                 end
                 if not pick then break end
-                seen[pick[2]] = true
+                seen[keyPos(pick[2])] = true
 
                 local exposed = false
-                for _, dir in sides do
+                for _, dir in ipairs(sides) do
                     local np = pick[2] + dir
-                    if seen[np] then continue end
+                    if seen[keyPos(np)] then goto cont_side end
                     local nb = getPlacedBlock(np)
                     if not nb or nb:GetAttribute('NoBreak') or nb == bed then
                         if not nb then exposed = true end
-                        continue
+                        goto cont_side
                     end
                     local h = useDistance and (origin - Vector3.new(np.X, origin.Y, np.Z)).Magnitude or getKDBlockHits(nb, np)
                     local nc = pick[1] + h
-                    if nc < (costs[np] or math.huge) then
-                        costs[np] = nc
-                        prev[np] = pick[2]
+                    if nc < (costs[keyPos(np)] or math.huge) then
+                        costs[keyPos(np)] = nc
+                        prev[keyPos(np)] = pick[2]
                         table.insert(frontier, {nc, np})
                     end
+                    ::cont_side::
                 end
 
                 if exposed and pick[2] ~= anchor and pick[1] < best.cost then
@@ -33366,7 +33404,8 @@ run(function()
                         local cur = pick[2]
                         while cur and cur ~= anchor do
                             table.insert(route, cur)
-                            cur = prev[cur]
+                            local pk = keyPos(cur)
+                            cur = prev[pk]
                         end
                         best.entry = pick[2]
                         best.cost = pick[1]
@@ -33383,13 +33422,13 @@ run(function()
     local function getRouteCost(positions, origin)
         local useDistance = BreakMode and BreakMode.Value == 'Distance'
         local total = 0
-        for _, pos in positions do
+        for _, pos in ipairs(positions) do
             local block = getPlacedBlock(pos)
             if block and not block:GetAttribute('NoBreak') then
                 if useDistance and origin then
-                    total += (origin - Vector3.new(pos.X, origin.Y, pos.Z)).Magnitude
+                    total = total + (origin - Vector3.new(pos.X, origin.Y, pos.Z)).Magnitude
                 else
-                    total += getKDBlockHits(block, pos)
+                    total = total + getKDBlockHits(block, pos)
                 end
             end
         end
@@ -33405,7 +33444,7 @@ run(function()
             p.CanCollide = false
             p.Transparency = 1
             p.Size = Vector3.new(3, 3, 3)
-            p.Parent = gameCamera
+            p.Parent = workspace.CurrentCamera or gameCamera or workspace
             local box = Instance.new('SelectionBox')
             box.Name = 'Box'
             box.LineThickness = 0.04
@@ -33420,23 +33459,24 @@ run(function()
             pathParts[idx].Position = entry
             pathParts[idx].Box.Color3 = Color3.fromRGB(255, 50, 50)
             pathParts[idx].Box.SurfaceColor3 = Color3.fromRGB(255, 50, 50)
-            idx += 1
+            idx = idx + 1
         end
         if route then
-            for _, pos in route do
-                if pos == entry then continue end
+            for _, pos in ipairs(route) do
+                if pos == entry then goto cont_route end
                 if idx > #pathParts then break end
                 pathParts[idx].Position = pos
                 pathParts[idx].Box.Color3 = Color3.fromRGB(50, 255, 50)
                 pathParts[idx].Box.SurfaceColor3 = Color3.fromRGB(50, 255, 50)
-                idx += 1
+                idx = idx + 1
+                ::cont_route::
             end
         end
         if anchor and idx <= #pathParts then
             pathParts[idx].Position = anchor
             pathParts[idx].Box.Color3 = Color3.fromRGB(50, 80, 255)
             pathParts[idx].Box.SurfaceColor3 = Color3.fromRGB(50, 80, 255)
-            idx += 1
+            idx = idx + 1
         end
         for i = idx, #pathParts do
             pathParts[i].Position = Vector3.new(0, -9999, 0)
@@ -33444,7 +33484,7 @@ run(function()
     end
 
     local function clearPath()
-        for _, p in pathParts do
+        for _, p in ipairs(pathParts) do
             p.Position = Vector3.new(0, -9999, 0)
         end
     end
@@ -33452,11 +33492,13 @@ run(function()
     local f4Conn
 
     local function fullCleanup()
-        store._lockedDefenseBlock = nil
-        store._routePositions = nil
-        store._routeAnchor = nil
+        if store then
+            store._lockedDefenseBlock = nil
+            store._routePositions = nil
+            store._routeAnchor = nil
+        end
         killBar()
-        for _, p in pathParts do p:ClearAllChildren() p:Destroy() end
+        for _, p in ipairs(pathParts) do p:ClearAllChildren() p:Destroy() end
         table.clear(pathParts)
         if targetGlow then targetGlow:Destroy() targetGlow = nil end
         if bedGlow then bedGlow:Destroy() bedGlow = nil end
@@ -33468,19 +33510,20 @@ run(function()
         Name = 'KingDraco',
         Function = function(callback)
             if callback then
+                -- create highlights and input handlers
                 targetGlow = Instance.new('Highlight')
                 targetGlow.FillTransparency = 0.75
                 targetGlow.OutlineTransparency = 0
                 targetGlow.FillColor = Color3.fromRGB(255, 80, 80)
                 targetGlow.OutlineColor = Color3.fromRGB(255, 200, 200)
-                targetGlow.Parent = gameCamera
+                targetGlow.Parent = workspace.CurrentCamera or gameCamera or workspace
 
                 bedGlow = Instance.new('Highlight')
                 bedGlow.FillTransparency = 0.85
                 bedGlow.OutlineTransparency = 0.3
                 bedGlow.FillColor = Color3.fromRGB(80, 80, 255)
                 bedGlow.OutlineColor = Color3.fromRGB(180, 180, 255)
-                bedGlow.Parent = gameCamera
+                bedGlow.Parent = workspace.CurrentCamera or gameCamera or workspace
 
                 f4Conn = inputService.InputBegan:Connect(function(input, gpe)
                     if gpe then return end
@@ -33498,253 +33541,265 @@ run(function()
 
                 local lastBedVis = false
 
-                repeat
-                    if not KingDraco.Enabled then break end
-                    if not entitylib.isAlive then
-                        clearPath()
-                        killBar()
-                        targetGlow.Adornee = nil
-                        bedGlow.Adornee = nil
-                        store._routePositions = nil
-                        store._routeAnchor = nil
-                        store._lockedDefenseBlock = nil
-                        task.wait(0.1)
-                        continue
-                    end
-
-                    local origin = entitylib.character.RootPart.Position
-                    refreshFilter()
-
-                    local bestBed, bestDist = nil, math.huge
-                    for _, b in beds do
-                        if not b or not b.Parent then continue end
-                        if not eligible(b) then continue end
-                        local d = (b.Position - origin).Magnitude
-                        if d < RangeSetting.Value and d < bestDist then
-                            bestBed, bestDist = b, d
+                local ok, err = xpcall(function()
+                    repeat
+                        if not KingDraco.Enabled then break end
+                        if not entitylib.isAlive then
+                            clearPath()
+                            killBar()
+                            targetGlow.Adornee = nil
+                            bedGlow.Adornee = nil
+                            if store then
+                                store._routePositions = nil
+                                store._routeAnchor = nil
+                                store._lockedDefenseBlock = nil
+                            end
+                            task.wait(0.1)
+                            continue
                         end
-                    end
 
-                    if not bestBed then
-                        store._lockedDefenseBlock = nil
-                        store._routePositions = nil
-                        store._routeAnchor = nil
-                        clearPath()
-                        killBar()
-                        bedGlow.Adornee = nil
-                        if BaseOre and BaseOre.Enabled and store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock then
-                            local myTeam = lplr:GetAttribute('Team')
-                            local myBed
-                            if myTeam then
-                                for _, b in beds do
-                                    if b and b.Parent and tonumber(b:GetAttribute('TeamId')) == tonumber(myTeam) then
-                                        myBed = b
-                                        break
+                        local origin = entitylib.character.RootPart.Position
+                        refreshFilter()
+
+                        local bestBed, bestDist = nil, math.huge
+                        for _, b in ipairs(beds) do
+                            if not b or not b.Parent then goto cont_beds end
+                            if not eligible(b) then goto cont_beds end
+                            local d = (b.Position - origin).Magnitude
+                            if d < RangeSetting.Value and d < bestDist then
+                                bestBed, bestDist = b, d
+                            end
+                            ::cont_beds::
+                        end
+
+                        if not bestBed then
+                            if store then
+                                store._lockedDefenseBlock = nil
+                                store._routePositions = nil
+                                store._routeAnchor = nil
+                            end
+                            clearPath()
+                            killBar()
+                            bedGlow.Adornee = nil
+                            if BaseOre and BaseOre.Enabled and store and store.hand and store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock then
+                                local myTeam = lplr:GetAttribute('Team')
+                                local myBed
+                                if myTeam then
+                                    for _, b in ipairs(beds) do
+                                        if b and b.Parent and tonumber(b:GetAttribute('TeamId')) == tonumber(myTeam) then
+                                            myBed = b
+                                            break
+                                        end
+                                    end
+                                end
+                                if myBed then
+                                    local baseOres = {}
+                                    for _, ore in ipairs(ironores) do
+                                        if (ore.Position - myBed.Position).Magnitude <= 40 then
+                                            table.insert(baseOres, ore)
+                                        end
+                                    end
+                                    for _, ore in ipairs(baseOres) do
+                                        if (ore.Position - origin).Magnitude < RangeSetting.Value and bedwars.BlockController:isBlockBreakable({blockPosition = ore.Position / 3}, lplr) then
+                                            bedwars.breakBlock(ore, EffectsOn.Enabled, Anim.Enabled, nil, false)
+                                            if DebugMode and DebugMode.Enabled then dbg('[KD] break base ore') end
+                                            task.wait(QuickBreak.Enabled and 0 or SpeedSetting.Value)
+                                            break
+                                        end
                                     end
                                 end
                             end
-                            if myBed then
-                                local baseOres = {}
-                                for _, ore in ironores do
-                                    if (ore.Position - myBed.Position).Magnitude <= 40 then
-                                        table.insert(baseOres, ore)
-                                    end
-                                end
-                                for _, ore in baseOres do
-                                    if (ore.Position - origin).Magnitude < RangeSetting.Value and bedwars.BlockController:isBlockBreakable({blockPosition = ore.Position / 3}, lplr) then
-                                        bedwars.breakBlock(ore, EffectsOn.Enabled, Anim.Enabled, nil, false)
-                                        if DebugMode and DebugMode.Enabled then dbg('[KD] break base ore') end
-                                        task.wait(QuickBreak.Enabled and 0 or SpeedSetting.Value)
-                                        break
-                                    end
-                                end
+                            targetGlow.Adornee = nil
+                            task.wait(0.1)
+                            continue
+                        end
+
+                        bedGlow.Adornee = bestBed
+
+                        local bedHitInfo = getBedHitInfo(bestBed)
+                        local bedVis = bedHitInfo ~= nil
+                        if bedVis and not lastBedVis then
+                            store.damageBlockFail = 0
+                        end
+                        lastBedVis = bedVis
+                        if DebugMode and DebugMode.Enabled then
+                            local dist = (bestBed.Position - origin).Magnitude
+                            dbg('[KD] bed=' .. bestBed.Name .. ' dist=' .. math.floor(dist) .. ' visible=' .. tostring(bedVis) .. ' failCD=' .. tostring(store.damageBlockFail > tick()))
+                        end
+
+                        if bedVis then
+                            if store then
+                                store._routePositions = nil
+                                store._routeAnchor = nil
+                                store._lockedDefenseBlock = nil
                             end
-                        end
-                        targetGlow.Adornee = nil
-                        task.wait(0.1)
-                        continue
-                    end
-
-                    bedGlow.Adornee = bestBed
-
-                    local bedHitInfo = getBedHitInfo(bestBed)
-                    local bedVis = bedHitInfo ~= nil
-                    if bedVis and not lastBedVis then
-                        store.damageBlockFail = 0
-                    end
-                    lastBedVis = bedVis
-                    if DebugMode and DebugMode.Enabled then
-                        local dist = (bestBed.Position - origin).Magnitude
-                        dbg('[KD] bed=' .. bestBed.Name .. ' dist=' .. math.floor(dist) .. ' visible=' .. tostring(bedVis) .. ' failCD=' .. tostring(store.damageBlockFail > tick()))
-                    end
-
-                    if bedVis then
-                        store._routePositions = nil
-                        store._routeAnchor = nil
-                        store._lockedDefenseBlock = nil
-                        targetGlow.Adornee = bestBed
-                        if PathOverlay.Enabled then clearPath() end
-                        if store.damageBlockFail <= tick() then
-                            strike(bestBed, bedHitInfo)
-                            if DebugMode and DebugMode.Enabled then dbg('[KD] strike bed (visible)') end
-                        elseif DebugMode and DebugMode.Enabled then
-                            dbg('[KD] visible bed retry cooldown')
-                        end
-
-                        -- small delay to allow strike()'s server response to set damageBlockFail if cancelled
-                        task.wait(0.05)
-
-                        -- fallback: if the direct strike was cancelled, try bedwars.breakBlock (Breaker) if enabled
-                        if store.damageBlockFail > tick() and BreakerFallback and BreakerFallback.Enabled then
-                            if not ItemLimit.Enabled or (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then
-                                bedwars.breakBlock(bestBed, EffectsOn.Enabled, Anim.Enabled, nil, ToolSwitch.Enabled)
-                                if DebugMode and DebugMode.Enabled then dbg('[KD] breaker fallback on visible bed') end
-                            end
-                        end
-
-                        task.wait(QuickBreak.Enabled and 0 or 0.25)
-                        continue
-                    end
-
-                    if BreakerFallback and BreakerFallback.Enabled and store.damageBlockFail > tick() then
-                        if not ItemLimit.Enabled or (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then
                             targetGlow.Adornee = bestBed
                             if PathOverlay.Enabled then clearPath() end
-                            bedwars.breakBlock(bestBed, EffectsOn.Enabled, Anim.Enabled, nil, ToolSwitch.Enabled)
-                            if DebugMode and DebugMode.Enabled then dbg('[KD] breaker bed') end
+                            if store.damageBlockFail <= tick() then
+                                strike(bestBed, bedHitInfo)
+                                if DebugMode and DebugMode.Enabled then dbg('[KD] strike bed (visible)') end
+                            elseif DebugMode and DebugMode.Enabled then
+                                dbg('[KD] visible bed retry cooldown')
+                            end
+
+                            task.wait(0.05)
+
+                            if store.damageBlockFail > tick() and BreakerFallback and BreakerFallback.Enabled then
+                                if not ItemLimit.Enabled or (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then
+                                    bedwars.breakBlock(bestBed, EffectsOn.Enabled, Anim.Enabled, nil, ToolSwitch.Enabled)
+                                    if DebugMode and DebugMode.Enabled then dbg('[KD] breaker fallback on visible bed') end
+                                end
+                            end
+
                             task.wait(QuickBreak.Enabled and 0 or 0.25)
                             continue
                         end
-                    end
 
-                    if store._routePositions then
-                        local advanced = {}
-                        for _, pos in store._routePositions do
-                            local blk = getPlacedBlock(pos)
-                            if blk and not blk:GetAttribute('NoBreak') then
-                                table.insert(advanced, pos)
+                        if BreakerFallback and BreakerFallback.Enabled and store.damageBlockFail > tick() then
+                            if not ItemLimit.Enabled or (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then
+                                targetGlow.Adornee = bestBed
+                                if PathOverlay.Enabled then clearPath() end
+                                bedwars.breakBlock(bestBed, EffectsOn.Enabled, Anim.Enabled, nil, ToolSwitch.Enabled)
+                                if DebugMode and DebugMode.Enabled then dbg('[KD] breaker bed') end
+                                task.wait(QuickBreak.Enabled and 0 or 0.25)
+                                continue
                             end
                         end
-                        if #advanced == 0 then
-                            store._routePositions = nil
-                            store._routeAnchor = nil
-                            store._lockedDefenseBlock = nil
-                        else
-                            store._routePositions = advanced
-                        end
-                    end
 
-                    local freshEntry, freshRoute, freshAnchor, freshCost = planAttack(bestBed, origin)
-
-                    local useStored = false
-                    if store._routePositions and #store._routePositions > 0 then
-                        local storedCost = getRouteCost(store._routePositions, origin)
-                        local firstBlock = getPlacedBlock(store._routePositions[1])
-                        local damaged = false
-                        if firstBlock then
-                            local blockData = bedwars.BlockController:getStore():getBlockData(bedwars.BlockController:getBlockPosition(store._routePositions[1]))
-                            local curHp = blockData and (blockData:GetAttribute('1') or blockData:GetAttribute('Health')) or firstBlock:GetAttribute('Health')
-                            local maxHp = firstBlock:GetAttribute('MaxHealth') or curHp
-                            if maxHp > 0 and curHp < maxHp then
-                                damaged = true
+                        if store and store._routePositions then
+                            local advanced = {}
+                            for _, pos in ipairs(store._routePositions) do
+                                local blk = getPlacedBlock(pos)
+                                if blk and not blk:GetAttribute('NoBreak') then
+                                    table.insert(advanced, pos)
+                                end
                             end
-                        end
-                        if freshRoute then
-                            if damaged then
-                                useStored = storedCost <= freshCost * 1.5
+                            if #advanced == 0 then
+                                store._routePositions = nil
+                                store._routeAnchor = nil
+                                store._lockedDefenseBlock = nil
                             else
-                                useStored = storedCost <= freshCost
+                                store._routePositions = advanced
                             end
-                        else
-                            useStored = true
                         end
-                        if DebugMode and DebugMode.Enabled then
-                            local hpStr = ''
+
+                        local freshEntry, freshRoute, freshAnchor, freshCost = planAttack(bestBed, origin)
+
+                        local useStored = false
+                        if store and store._routePositions and #store._routePositions > 0 then
+                            local storedCost = getRouteCost(store._routePositions, origin)
+                            local firstBlock = getPlacedBlock(store._routePositions[1])
+                            local damaged = false
                             if firstBlock then
                                 local blockData = bedwars.BlockController:getStore():getBlockData(bedwars.BlockController:getBlockPosition(store._routePositions[1]))
                                 local curHp = blockData and (blockData:GetAttribute('1') or blockData:GetAttribute('Health')) or firstBlock:GetAttribute('Health')
                                 local maxHp = firstBlock:GetAttribute('MaxHealth') or curHp
-                                hpStr = ' hp=' .. string.format('%.0f/%.0f', curHp, maxHp)
+                                if maxHp > 0 and curHp < maxHp then
+                                    damaged = true
+                                end
                             end
-                            dbg('[KD] route compare: stored=' .. string.format('%.1f', storedCost) .. ' (' .. #store._routePositions .. ' blocks)' .. hpStr .. (damaged and ' [damaged]' or '') .. ' fresh=' .. (freshRoute and string.format('%.1f', freshCost) or 'none') .. ' -> ' .. (useStored and 'keep' or 'switch'))
+                            if freshRoute then
+                                if damaged then
+                                    useStored = storedCost <= freshCost * 1.5
+                                else
+                                    useStored = storedCost <= freshCost
+                                end
+                            else
+                                useStored = true
+                            end
+                            if DebugMode and DebugMode.Enabled then
+                                local hpStr = ''
+                                if firstBlock then
+                                    local blockData = bedwars.BlockController:getStore():getBlockData(bedwars.BlockController:getBlockPosition(store._routePositions[1]))
+                                    local curHp = blockData and (blockData:GetAttribute('1') or blockData:GetAttribute('Health')) or firstBlock:GetAttribute('Health')
+                                    local maxHp = firstBlock:GetAttribute('MaxHealth') or curHp
+                                    hpStr = ' hp=' .. string.format('%.0f/%.0f', curHp, maxHp)
+                                end
+                                dbg('[KD] route compare: stored=' .. string.format('%.1f', storedCost) .. ' (' .. #store._routePositions .. ' blocks)' .. hpStr .. (damaged and ' [damaged]' or '') .. ' fresh=' .. (freshRoute and string.format('%.1f', freshCost) or 'none') .. ' -> ' .. (useStored and 'keep' or 'switch'))
+                            end
                         end
-                    end
 
-                    if useStored then
-                        local hitPos = store._routePositions[1]
-                        local hitBlock = getPlacedBlock(hitPos)
-                        if hitBlock and isVisible(hitPos) and (hitPos - origin).Magnitude <= RangeSetting.Value then
-                            store._lockedDefenseBlock = hitBlock
-                            targetGlow.Adornee = hitBlock
-                            if PathOverlay.Enabled then drawPath(store._routePositions, hitPos, store._routeAnchor) end
-                            equipFor(hitBlock)
-                            strike(hitBlock)
-                            if DebugMode and DebugMode.Enabled then dbg('[KD] strike stored route (' .. hitBlock.Name .. ')') end
-                            task.wait(QuickBreak.Enabled and 0 or SpeedSetting.Value)
+                        if useStored then
+                            local hitPos = store._routePositions[1]
+                            local hitBlock = getPlacedBlock(hitPos)
+                            if hitBlock and isVisible(hitPos) and (hitPos - origin).Magnitude <= RangeSetting.Value then
+                                store._lockedDefenseBlock = hitBlock
+                                targetGlow.Adornee = hitBlock
+                                if PathOverlay.Enabled then drawPath(store._routePositions, hitPos, store._routeAnchor) end
+                                equipFor(hitBlock)
+                                strike(hitBlock)
+                                if DebugMode and DebugMode.Enabled then dbg('[KD] strike stored route (' .. hitBlock.Name .. ')') end
+                                task.wait(QuickBreak.Enabled and 0 or SpeedSetting.Value)
+                                continue
+                            end
+                        end
+
+                        if freshEntry then
+                            local entryBlock = getPlacedBlock(freshEntry)
+                            if DebugMode and DebugMode.Enabled then
+                                dbg('[KD] defense: ' .. tostring(entryBlock and entryBlock.Name) .. ' entryVis=' .. tostring(entryBlock and isVisible(freshEntry)))
+                            end
+                            if entryBlock and isVisible(freshEntry) then
+                                store._routePositions = freshRoute
+                                store._routeAnchor = freshAnchor
+                                store._lockedDefenseBlock = entryBlock
+                                targetGlow.Adornee = entryBlock
+                                if PathOverlay.Enabled then drawPath(freshRoute, freshEntry, freshAnchor) end
+                                equipFor(entryBlock)
+                                strike(entryBlock)
+                                if DebugMode and DebugMode.Enabled then dbg('[KD] strike fresh route (' .. entryBlock.Name .. ')') end
+                                task.wait(QuickBreak.Enabled and 0 or SpeedSetting.Value)
+                                continue
+                            end
+                        elseif bedVis then
+                            targetGlow.Adornee = bestBed
+                            strike(bestBed, bedHitInfo)
+                            if DebugMode and DebugMode.Enabled then dbg('[KD] strike bed (no defense found)') end
+                            task.wait(QuickBreak.Enabled and 0 or 0.25)
                             continue
-                        end
-                    end
-
-                    if freshEntry then
-                        local entryBlock = getPlacedBlock(freshEntry)
-                        if DebugMode and DebugMode.Enabled then
-                            dbg('[KD] defense: ' .. tostring(entryBlock and entryBlock.Name) .. ' entryVis=' .. tostring(entryBlock and isVisible(freshEntry)))
-                        end
-                        if entryBlock and isVisible(freshEntry) then
-                            store._routePositions = freshRoute
-                            store._routeAnchor = freshAnchor
-                            store._lockedDefenseBlock = entryBlock
-                            targetGlow.Adornee = entryBlock
-                            if PathOverlay.Enabled then drawPath(freshRoute, freshEntry, freshAnchor) end
-                            equipFor(entryBlock)
-                            strike(entryBlock)
-                            if DebugMode and DebugMode.Enabled then dbg('[KD] strike fresh route (' .. entryBlock.Name .. ')') end
-                            task.wait(QuickBreak.Enabled and 0 or SpeedSetting.Value)
-                            continue
-                        end
-                    elseif bedVis then
-                        targetGlow.Adornee = bestBed
-                        strike(bestBed, bedHitInfo)
-                        if DebugMode and DebugMode.Enabled then dbg('[KD] strike bed (no defense found)') end
-                        task.wait(QuickBreak.Enabled and 0 or 0.25)
-                        continue
-                    else
-                        if BaseOre and BaseOre.Enabled and store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock then
-                            local myTeam = lplr:GetAttribute('Team')
-                            local myBed
-                            if myTeam then
-                                for _, b in beds do
-                                    if b and b.Parent and tonumber(b:GetAttribute('TeamId')) == tonumber(myTeam) then
-                                        myBed = b
-                                        break
+                        else
+                            if BaseOre and BaseOre.Enabled and store and store.hand and store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name] and bedwars.ItemMeta[store.hand.tool.Name].breakBlock then
+                                local myTeam = lplr:GetAttribute('Team')
+                                local myBed
+                                if myTeam then
+                                    for _, b in ipairs(beds) do
+                                        if b and b.Parent and tonumber(b:GetAttribute('TeamId')) == tonumber(myTeam) then
+                                            myBed = b
+                                            break
+                                        end
+                                    end
+                                end
+                                if myBed then
+                                    local baseOres = {}
+                                    for _, ore in ipairs(ironores) do
+                                        if (ore.Position - myBed.Position).Magnitude <= 40 then
+                                            table.insert(baseOres, ore)
+                                        end
+                                    end
+                                    for _, ore in ipairs(baseOres) do
+                                        if (ore.Position - origin).Magnitude < RangeSetting.Value and bedwars.BlockController:isBlockBreakable({blockPosition = ore.Position / 3}, lplr) then
+                                            bedwars.breakBlock(ore, EffectsOn.Enabled, Anim.Enabled, nil, false)
+                                            if DebugMode and DebugMode.Enabled then dbg('[KD] break base ore') end
+                                            task.wait(QuickBreak.Enabled and 0 or SpeedSetting.Value)
+                                            break
+                                        end
                                     end
                                 end
                             end
-                            if myBed then
-                                local baseOres = {}
-                                for _, ore in ironores do
-                                    if (ore.Position - myBed.Position).Magnitude <= 40 then
-                                        table.insert(baseOres, ore)
-                                    end
-                                end
-                                for _, ore in baseOres do
-                                    if (ore.Position - origin).Magnitude < RangeSetting.Value and bedwars.BlockController:isBlockBreakable({blockPosition = ore.Position / 3}, lplr) then
-                                        bedwars.breakBlock(ore, EffectsOn.Enabled, Anim.Enabled, nil, false)
-                                        if DebugMode and DebugMode.Enabled then dbg('[KD] break base ore') end
-                                        task.wait(QuickBreak.Enabled and 0 or SpeedSetting.Value)
-                                        break
-                                    end
-                                end
-                            end
+                            if DebugMode and DebugMode.Enabled then dbg('[KD] no action') end
                         end
-                        if DebugMode and DebugMode.Enabled then dbg('[KD] no action') end
-                    end
 
-                    targetGlow.Adornee = nil
-                    clearPath()
-                    killBar()
-                    task.wait(1 / TickRate.Value)
-                until not KingDraco.Enabled
+                        targetGlow.Adornee = nil
+                        clearPath()
+                        killBar()
+                        task.wait(1 / TickRate.Value)
+                    until not KingDraco.Enabled
+                end, debug.traceback)
+
+                if not ok then
+                    warn("KingDraco runtime error:\n" .. tostring(err))
+                    fullCleanup()
+                end
             else
                 fullCleanup()
             end
