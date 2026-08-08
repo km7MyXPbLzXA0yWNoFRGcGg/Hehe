@@ -34607,124 +34607,52 @@ run(function()
 end)
 
 run(function()
-    local AutoBank
+    local AutoBankV3
     local Offset
     local GUICheck
-    local ReleaseDepth
-    local BankDebug
-    local Chests
+
     local frozen = {}
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
+    local cachedChest = nil  -- cached chest object (not position — recomputed each call with live Depth)
+    local lastChestClose = 0
     local resourceTypes = {'emerald', 'diamond', 'iron'}
-    local bankDebugLog = {}
 
-    local function bankDbg(msg)
-        if BankDebug and BankDebug.Enabled then
-            table.insert(bankDebugLog, os.date('%H:%M:%S') .. ' ' .. msg)
-            if setclipboard then
-                setclipboard(table.concat(bankDebugLog, '\n'))
+    -- returns the chest BasePart/Model, caches it so we don't scan every tick
+    local function getChestObj()
+        if cachedChest and cachedChest.Parent then return cachedChest end
+        cachedChest = nil
+        -- prefer the chest that has an owner attribute matching us
+        for _, obj in collectionService:GetTagged('personal-chest') do
+            local owner = obj:GetAttribute('Owner') or obj:GetAttribute('PlayerId') or obj:GetAttribute('UserId')
+            if owner == lplr.UserId or owner == lplr.Name then
+                cachedChest = obj; return obj
             end
         end
-    end
-
-    local function checkNearGen(pos, label)
-        if not (BankDebug and BankDebug.Enabled) then return end
-        for _, obj in workspace:GetDescendants() do
-            if obj.Name == 'GeneratorAdornee' then
-                local ok, id = pcall(function() return obj:GetAttribute('Id') end)
-                if ok and id and type(id) == 'string' and id ~= '' then
-                    local dist = (pos - obj.Position).Magnitude
-                    if dist < 15 then
-                        local yBelow = obj.Position.Y - pos.Y
-                        local msg = '!! NEAR GEN !! ' .. label .. ' | gen=' .. id .. ' dist=' .. string.format('%.1f', dist) .. ' yBelow=' .. string.format('%.1f', yBelow) .. ' itemPos=' .. tostring(pos) .. ' genPos=' .. tostring(obj.Position)
-                        bankDbg(msg)
-                        notif('AutoBank DEBUG', 'ITEM NEAR GEN! ' .. id .. ' dist=' .. string.format('%.1f', dist), 5)
-                    end
+        -- fallback: nearest tagged chest to the player
+        if entitylib.isAlive then
+            local pos = entitylib.character.RootPart.Position
+            local bestDist, bestObj
+            for _, obj in collectionService:GetTagged('personal-chest') do
+                local ok, objPos = pcall(function() return obj.Position end)
+                if ok then
+                    local d = (pos - objPos).Magnitude
+                    if not bestDist or d < bestDist then bestDist = d; bestObj = obj end
                 end
             end
+            if bestObj then cachedChest = bestObj; return bestObj end
         end
+        return nil
     end
 
-    local bankGui = Instance.new('ScreenGui')
-    bankGui.Name = 'BankLootUI'
-    bankGui.Parent = vape.gui
-    bankGui.Enabled = false
-    bankGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    bankGui.DisplayOrder = 10
-    bankGui.ResetOnSpawn = false
-
-    local bankFrame = Instance.new('Frame')
-    bankFrame.Parent = bankGui
-    bankFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    bankFrame.BackgroundTransparency = 0.3
-    bankFrame.BorderSizePixel = 0
-    bankFrame.Position = UDim2.new(0, 8, 1, -8)
-    bankFrame.Size = UDim2.new(0, 130, 0, 85)
-    bankFrame.AnchorPoint = Vector2.new(0, 1)
-
-    local bankCorner = Instance.new('UICorner')
-    bankCorner.CornerRadius = UDim.new(0, 8)
-    bankCorner.Parent = bankFrame
-
-    local bankTitle = Instance.new('TextLabel')
-    bankTitle.Parent = bankFrame
-    bankTitle.BackgroundTransparency = 1
-    bankTitle.Size = UDim2.new(1, 0, 0, 20)
-    bankTitle.Position = UDim2.new(0, 0, 0, 4)
-    bankTitle.Text = 'Bank Loot'
-    bankTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    bankTitle.TextSize = 13
-    bankTitle.Font = Enum.Font.GothamBold
-
-    local ironLabel = Instance.new('TextLabel')
-    ironLabel.Parent = bankFrame
-    ironLabel.BackgroundTransparency = 1
-    ironLabel.Size = UDim2.new(1, -16, 0, 18)
-    ironLabel.Position = UDim2.new(0, 8, 0, 24)
-    ironLabel.Text = 'Iron: 0'
-    ironLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    ironLabel.TextSize = 12
-    ironLabel.Font = Enum.Font.Gotham
-    ironLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local diamondLabel = Instance.new('TextLabel')
-    diamondLabel.Parent = bankFrame
-    diamondLabel.BackgroundTransparency = 1
-    diamondLabel.Size = UDim2.new(1, -16, 0, 18)
-    diamondLabel.Position = UDim2.new(0, 8, 0, 42)
-    diamondLabel.Text = 'Diamond: 0'
-    diamondLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-    diamondLabel.TextSize = 12
-    diamondLabel.Font = Enum.Font.Gotham
-    diamondLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local emeraldLabel = Instance.new('TextLabel')
-    emeraldLabel.Parent = bankFrame
-    emeraldLabel.BackgroundTransparency = 1
-    emeraldLabel.Size = UDim2.new(1, -16, 0, 18)
-    emeraldLabel.Position = UDim2.new(0, 8, 0, 60)
-    emeraldLabel.Text = 'Emerald: 0'
-    emeraldLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-    emeraldLabel.TextSize = 12
-    emeraldLabel.Font = Enum.Font.Gotham
-    emeraldLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local function updateLootUI()
-        ironLabel.Text = 'Iron: ' .. stashedCounts.iron
-        diamondLabel.Text = 'Diamond: ' .. stashedCounts.diamond
-        emeraldLabel.Text = 'Emerald: ' .. stashedCounts.emerald
-    end
-
-    local function disableCollision(obj)
-        if obj:IsA('BasePart') then
-            obj.CanCollide = false
-        end
-        for _, part in obj:GetDescendants() do
-            if part:IsA('BasePart') then
-                part.CanCollide = false
-            end
-        end
+    -- returns the stash position: Depth studs straight below the chest
+    -- called fresh each time so the Depth slider is always respected
+    local function getChestStashPos()
+        local obj = getChestObj()
+        if not obj then return nil end
+        local ok, cPos = pcall(function() return obj.Position end)
+        if not ok or not cPos then return nil end
+        return cPos - Vector3.new(0, Offset.Value, 0)
     end
 
     local function freezeParts(obj)
@@ -34744,54 +34672,29 @@ run(function()
         end
     end
 
-    local function unfreezeParts(obj)
-        if obj:IsA('BasePart') then
-            obj.CanCollide = true
-            obj.Anchored = false
-        end
+    local function disableCollision(obj)
+        if obj:IsA('BasePart') then obj.CanCollide = false end
         for _, part in obj:GetDescendants() do
-            if part:IsA('BasePart') then
-                part.CanCollide = true
-                part.Anchored = false
-            end
+            if part:IsA('BasePart') then part.CanCollide = false end
         end
-    end
-
-    local bankRayParams = RaycastParams.new()
-    bankRayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-    local function getUnderBlock()
-        if not entitylib.isAlive then return nil end
-        local root = entitylib.character.RootPart
-        bankRayParams.FilterDescendantsInstances = {lplr.Character}
-        local ray = workspace:Raycast(root.Position, Vector3.new(0, -50, 0), bankRayParams)
-        if ray then
-            return ray.Position - Vector3.new(0, ReleaseDepth.Value, 0)
-        end
-        return root.Position - Vector3.new(0, 10, 0)
     end
 
     local function slamDown(obj)
         local v = Vector3.new(0, -3000, 0)
-        if obj:IsA('BasePart') then
-            obj.Velocity = v
-        end
+        if obj:IsA('BasePart') then obj.Velocity = v end
         for _, part in obj:GetDescendants() do
-            if part:IsA('BasePart') then
-                part.Velocity = v
-            end
+            if part:IsA('BasePart') then part.Velocity = v end
         end
     end
 
     local function nearChest()
-        if entitylib.isAlive then
-            local pos = entitylib.character.RootPart.Position
-            for _, chest in Chests do
-                if (chest.Position - pos).Magnitude < 20 then
-                    return true
-                end
-            end
+        if not entitylib.isAlive then return false end
+        local pos = entitylib.character.RootPart.Position
+        for _, obj in collectionService:GetTagged('personal-chest') do
+            local ok, objPos = pcall(function() return obj.Position end)
+            if ok and (objPos - pos).Magnitude < 20 then return true end
         end
+        return false
     end
 
     local function cleanupFrozen()
@@ -34802,16 +34705,31 @@ run(function()
         end
     end
 
+    local function maintainFrozen()
+        if not entitylib.isAlive then return end
+        local stashPos = getChestStashPos()
+        if not stashPos then return end
+        for _, item in frozen do
+            if item and item.Parent then
+                item.CFrame = CFrame.new(stashPos)
+                freezeParts(item)
+            end
+        end
+    end
+
+    -- forward-declared so stashOne/releaseAll can call them before the UI block assigns the real bodies
+    local updateV3UI = function() end
+    local setV3Status = function() end
+
     local function stashOne()
         if busy or not entitylib.isAlive then return end
+        local stashPos = getChestStashPos()
+        if not stashPos then return end
         for _, itemType in resourceTypes do
             local item = getItem(itemType)
             if item then
                 busy = true
                 task.spawn(function()
-                    local playerPos = entitylib.character.RootPart.Position
-                    bankDbg('STASH ' .. itemType .. ' x' .. item.amount .. ' playerPos=' .. tostring(playerPos))
-
                     local caught
                     local conn = collectionService:GetInstanceAddedSignal('ItemDrop'):Connect(function(v)
                         if not caught then caught = v end
@@ -34831,51 +34749,23 @@ run(function()
                     conn:Disconnect()
 
                     if dropped and dropped.Parent then
-                        local dropPos = dropped.Position or (dropped:FindFirstChild('Handle') and dropped.Handle.Position)
-                        bankDbg('  dropped at: ' .. tostring(dropPos))
-                        checkNearGen(dropPos, 'AFTER_DROP')
-                        if _gd.on then
-                            local hp = dropped:FindFirstChild('Handle')
-                            local cc = hp and hp.CanCollide or 'noHandle'
-                            local nown = 'unk'
-                            pcall(function() nown = tostring(isnetworkowner(hp or dropped)) end)
-                            _gd.fn('AB:DROP', itemType .. ' x' .. item.amount .. ' at ' .. tostring(dropPos) .. ' CC=' .. tostring(cc) .. ' NOwn=' .. nown)
-                        end
-
                         pcall(function()
                             dropped:SetAttribute('ClientDropTime', tick() + 9999)
                             disableCollision(dropped)
                             slamDown(dropped)
                         end)
-                        if _gd.on then _gd.fn('AB:SLAM', itemType .. ' CDT=+9999 collision=off slamming down') end
                         task.spawn(function()
                             task.wait(0.15)
                             if dropped and dropped.Parent then
-                                local slamPos = dropped.Position or (dropped:FindFirstChild('Handle') and dropped.Handle.Position)
-                                bankDbg('  after slam: ' .. tostring(slamPos))
-                                checkNearGen(slamPos, 'AFTER_SLAM')
-                                if _gd.on then _gd.fn('AB:SLAMMED', itemType .. ' landed at ' .. tostring(slamPos)) end
-
-                                if entitylib.isAlive then
-                                    local pos = entitylib.character.RootPart.Position
-                                    dropped.CFrame = CFrame.new(pos - Vector3.new(0, Offset.Value, 0))
-                                    bankDbg('  teleported to: ' .. tostring(pos - Vector3.new(0, Offset.Value, 0)))
-                                    if _gd.on then _gd.fn('AB:FREEZE', itemType .. ' frozen under player at Y=' .. string.format('%.2f', pos.Y - Offset.Value)) end
-                                else
-                                    bankDbg('  !! PLAYER DEAD — NO TELEPORT !!')
-                                    checkNearGen(slamPos, 'NO_TELEPORT_DEAD')
-                                    if _gd.on then _gd.fn('AB:DEAD', itemType .. ' player dead, item left at ' .. tostring(slamPos)) end
-                                end
+                                -- recompute in case Depth slider changed while waiting
+                                local pos = getChestStashPos() or stashPos
+                                dropped.CFrame = CFrame.new(pos)
                                 freezeParts(dropped)
                                 table.insert(frozen, dropped)
                                 stashedCounts[itemType] = stashedCounts[itemType] + item.amount
-                                updateLootUI()
-                            else
-                                bankDbg('  !! ITEM GONE before teleport !!')
+                                updateV3UI()
                             end
                         end)
-                    else
-                        bankDbg('  !! DROP FAILED !!')
                     end
                     task.wait(0.3)
                     busy = false
@@ -34887,40 +34777,199 @@ run(function()
 
     local released = false
 
-    local function depositInventory()
-        local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name..'_personal')
-        if not chest then return end
-        for _, v in store.inventory.inventory.items do
-            if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
-                pcall(function()
-                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
-                end)
-            end
+    -- ── UI ──────────────────────────────────────────────────────────────────
+    local v3Gui = Instance.new('ScreenGui')
+    v3Gui.Name = 'AutoBankV3UI'
+    v3Gui.Parent = vape.gui
+    v3Gui.Enabled = false
+    v3Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    v3Gui.DisplayOrder = 11
+    v3Gui.ResetOnSpawn = false
+
+    -- panel
+    local v3Panel = Instance.new('Frame')
+    v3Panel.Parent = v3Gui
+    v3Panel.BackgroundColor3 = Color3.fromRGB(10, 11, 18)
+    v3Panel.BackgroundTransparency = 0.05
+    v3Panel.BorderSizePixel = 0
+    v3Panel.Position = UDim2.new(0, 8, 1, -8)
+    v3Panel.Size = UDim2.new(0, 162, 0, 124)
+    v3Panel.AnchorPoint = Vector2.new(0, 1)
+    Instance.new('UICorner', v3Panel).CornerRadius = UDim.new(0, 10)
+
+    local v3Stroke = Instance.new('UIStroke')
+    v3Stroke.Color = Color3.fromRGB(70, 85, 130)
+    v3Stroke.Thickness = 1
+    v3Stroke.Transparency = 0.45
+    v3Stroke.Parent = v3Panel
+
+    -- accent bar (top edge)
+    local accentBar = Instance.new('Frame')
+    accentBar.Parent = v3Panel
+    accentBar.BackgroundColor3 = Color3.fromRGB(90, 145, 255)
+    accentBar.BorderSizePixel = 0
+    accentBar.Position = UDim2.new(0, 0, 0, 0)
+    accentBar.Size = UDim2.new(1, 0, 0, 2)
+    Instance.new('UICorner', accentBar).CornerRadius = UDim.new(0, 10)
+
+    -- header: title + status dot
+    local v3Title = Instance.new('TextLabel')
+    v3Title.Parent = v3Panel
+    v3Title.BackgroundTransparency = 1
+    v3Title.Position = UDim2.new(0, 10, 0, 7)
+    v3Title.Size = UDim2.new(1, -30, 0, 16)
+    v3Title.Text = 'AutoBank  v3'
+    v3Title.TextColor3 = Color3.fromRGB(220, 228, 255)
+    v3Title.TextSize = 12
+    v3Title.Font = Enum.Font.GothamBold
+    v3Title.TextXAlignment = Enum.TextXAlignment.Left
+
+    local statusDot = Instance.new('Frame')
+    statusDot.Parent = v3Panel
+    statusDot.BackgroundColor3 = Color3.fromRGB(80, 200, 120)
+    statusDot.BorderSizePixel = 0
+    statusDot.Position = UDim2.new(1, -16, 0, 12)
+    statusDot.Size = UDim2.new(0, 8, 0, 8)
+    Instance.new('UICorner', statusDot).CornerRadius = UDim.new(1, 0)
+
+    -- divider
+    local divider = Instance.new('Frame')
+    divider.Parent = v3Panel
+    divider.BackgroundColor3 = Color3.fromRGB(55, 62, 95)
+    divider.BorderSizePixel = 0
+    divider.Position = UDim2.new(0, 10, 0, 27)
+    divider.Size = UDim2.new(1, -20, 0, 1)
+
+    -- resource row factory
+    local v3IronCount, v3DiamondCount, v3EmeraldCount
+
+    local function makeRow(yOff, iconType, label, badgeColor)
+        local row = Instance.new('Frame')
+        row.Parent = v3Panel
+        row.BackgroundColor3 = Color3.fromRGB(22, 25, 42)
+        row.BackgroundTransparency = 0.25
+        row.BorderSizePixel = 0
+        row.Position = UDim2.new(0, 8, 0, yOff)
+        row.Size = UDim2.new(1, -16, 0, 26)
+        Instance.new('UICorner', row).CornerRadius = UDim.new(0, 6)
+
+        local icon = Instance.new('ImageLabel')
+        icon.Parent = row
+        icon.BackgroundTransparency = 1
+        icon.Position = UDim2.new(0, 4, 0.5, -10)
+        icon.Size = UDim2.new(0, 20, 0, 20)
+        pcall(function() icon.Image = bedwars.getIcon({itemType = iconType}, true) end)
+
+        local nameLabel = Instance.new('TextLabel')
+        nameLabel.Parent = row
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Position = UDim2.new(0, 28, 0, 0)
+        nameLabel.Size = UDim2.new(1, -76, 1, 0)
+        nameLabel.Text = label
+        nameLabel.TextColor3 = Color3.fromRGB(170, 178, 210)
+        nameLabel.TextSize = 11
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+        local badge = Instance.new('Frame')
+        badge.Parent = row
+        badge.BackgroundColor3 = badgeColor
+        badge.BackgroundTransparency = 0.55
+        badge.BorderSizePixel = 0
+        badge.Position = UDim2.new(1, -42, 0.5, -11)
+        badge.Size = UDim2.new(0, 36, 0, 22)
+        Instance.new('UICorner', badge).CornerRadius = UDim.new(0, 5)
+
+        local v3Stroke2 = Instance.new('UIStroke')
+        v3Stroke2.Color = badgeColor
+        v3Stroke2.Thickness = 1
+        v3Stroke2.Transparency = 0.6
+        v3Stroke2.Parent = badge
+
+        local count = Instance.new('TextLabel')
+        count.Parent = badge
+        count.BackgroundTransparency = 1
+        count.Size = UDim2.new(1, 0, 1, 0)
+        count.Text = '0'
+        count.TextColor3 = Color3.fromRGB(240, 245, 255)
+        count.TextSize = 12
+        count.Font = Enum.Font.GothamBold
+
+        return count
+    end
+
+    v3IronCount    = makeRow(32, 'iron',    'Iron',    Color3.fromRGB(190, 190, 190))
+    v3DiamondCount = makeRow(62, 'diamond', 'Diamond', Color3.fromRGB(80,  165, 255))
+    v3EmeraldCount = makeRow(92, 'emerald', 'Emerald', Color3.fromRGB(60,  210,  90))
+
+    -- status label (bottom strip)
+    local v3StatusLabel = Instance.new('TextLabel')
+    v3StatusLabel.Parent = v3Panel
+    v3StatusLabel.BackgroundTransparency = 1
+    v3StatusLabel.Position = UDim2.new(0, 10, 1, -17)
+    v3StatusLabel.Size = UDim2.new(1, -20, 0, 13)
+    v3StatusLabel.Text = '● Stashing'
+    v3StatusLabel.TextColor3 = Color3.fromRGB(90, 150, 255)
+    v3StatusLabel.TextSize = 10
+    v3StatusLabel.Font = Enum.Font.Gotham
+    v3StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- assign real bodies to the forward-declared upvalues
+    updateV3UI = function()
+        v3IronCount.Text    = tostring(stashedCounts.iron)
+        v3DiamondCount.Text = tostring(stashedCounts.diamond)
+        v3EmeraldCount.Text = tostring(stashedCounts.emerald)
+    end
+
+    setV3Status = function(state)
+        if state == 'stashing' then
+            v3StatusLabel.Text      = '● Stashing'
+            v3StatusLabel.TextColor3 = Color3.fromRGB(90, 150, 255)
+            statusDot.BackgroundColor3 = Color3.fromRGB(90, 150, 255)
+        elseif state == 'chest' then
+            v3StatusLabel.Text      = '● At chest'
+            v3StatusLabel.TextColor3 = Color3.fromRGB(60, 210, 90)
+            statusDot.BackgroundColor3 = Color3.fromRGB(60, 210, 90)
+        elseif state == 'idle' then
+            v3StatusLabel.Text      = '○ Idle'
+            v3StatusLabel.TextColor3 = Color3.fromRGB(100, 105, 140)
+            statusDot.BackgroundColor3 = Color3.fromRGB(70, 74, 110)
         end
     end
+    -- ── end UI ──────────────────────────────────────────────────────────────
 
     local function releaseAll()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        local hidePos = getUnderBlock()
-        if _gd.on then _gd.fn('AB:RELEASE', 'Releasing ' .. #frozen .. ' items to hidePos=' .. tostring(hidePos) .. ' (Y=' .. string.format('%.2f', hidePos and hidePos.Y or 0) .. ')') end
+        -- teleport all items to player feet while still anchored (stacked, above ground, no void)
+        -- player is standing at their chest when this runs so "feet" = "at chest"
+        local feetPos = entitylib.character.RootPart.CFrame * CFrame.new(0, -3, 0)
+        for _, item in frozen do
+            if item and item.Parent then
+                item.CFrame = feetPos
+            end
+        end
+        -- now unfreeze all at once (items are above ground, physics won't eject into void)
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
-                unfreezeParts(item)
-                item.CFrame = CFrame.new(hidePos)
-                item:SetAttribute('ClientDropTime', 0)
-                if _gd.on then
-                    local hp = item:FindFirstChild('Handle')
-                    local p = hp or item
-                    _gd.fn('AB:RELEASED', item.Name .. ' -> CC=true A=false CDT=0 pos=' .. tostring(hidePos) .. ' NOwn=' .. tostring(pcall(function() return isnetworkowner(p) end) and isnetworkowner(p) or 'unk'))
+                if item:IsA('BasePart') then
+                    item.CanCollide = true
+                    item.Anchored = false
                 end
+                for _, part in item:GetDescendants() do
+                    if part:IsA('BasePart') then
+                        part.CanCollide = true
+                        part.Anchored = false
+                    end
+                end
+                item:SetAttribute('ClientDropTime', 0)
             end
             table.remove(frozen, i)
         end
         stashedCounts = {iron = 0, diamond = 0, emerald = 0}
-        updateLootUI()
+        updateV3UI()
         released = false
     end
 
@@ -34931,85 +34980,73 @@ run(function()
             if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
                 if (pos - v.Position).Magnitude <= 20 then
                     pcall(function()
-                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({
-                            itemDrop = v
-                        })
+                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = v})
                     end)
                 end
             end
         end
     end
 
-    local function maintainFrozen()
-        if not entitylib.isAlive then return end
-        local pos = entitylib.character.RootPart.Position
-        for _, item in frozen do
-            if item and item.Parent then
-                item.CFrame = CFrame.new(pos - Vector3.new(0, Offset.Value, 0))
-                freezeParts(item)
+    local function depositInventory()
+        local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
+        if not chest then return end
+        for _, v in store.inventory.inventory.items do
+            if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
+                pcall(function()
+                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
+                end)
             end
         end
     end
 
-    AutoBank = vape.Categories.Inventory:CreateModule({
-        Name = 'AutoBank v2',
+    AutoBankV3 = vape.Categories.Inventory:CreateModule({
+        Name = 'AutoBank v3',
         Function = function(callback)
-            bankGui.Enabled = callback
+            v3Gui.Enabled = callback
             if callback then
-                table.clear(bankDebugLog)
-                bankDbg('=== AutoBank v2 ENABLED ===')
+                cachedChest = nil
                 stashedCounts = {iron = 0, diamond = 0, emerald = 0}
-                updateLootUI()
-                Chests = collection('personal-chest', AutoBank)
-                local lastChestClose = 0
+                lastChestClose = 0
+                updateV3UI()
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
                         local atChest = nearChest() and (not GUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
                         if atChest then
                             lastChestClose = tick()
+                            setV3Status('chest')
                             releaseAll()
                             pickupNearby()
                             depositInventory()
                         elseif tick() - lastChestClose < 3 then
                             maintainFrozen()
                         else
+                            local hadItems = #frozen > 0 or (stashedCounts.iron + stashedCounts.diamond + stashedCounts.emerald) > 0
+                            setV3Status(hadItems and 'stashing' or 'idle')
                             stashOne()
                             maintainFrozen()
                         end
+                    else
+                        setV3Status('idle')
                     end
                     task.wait(0.1)
-                until not AutoBank.Enabled
+                until not AutoBankV3.Enabled
                 busy = false
             end
         end,
-        Tooltip = 'Phases loot underground and deposits into chest on return'
+        Tooltip = 'Stashes loot underground at your chest — stacked inside each other, released to feet on chest open'
     })
-    Offset = AutoBank:CreateSlider({
+    Offset = AutoBankV3:CreateSlider({
         Name = 'Depth',
-        Min = 50,
-        Max = 500,
-        Default = 300,
-        Suffix = function(val)
-            return val == 1 and 'stud' or 'studs'
-        end
-    })
-    GUICheck = AutoBank:CreateToggle({
-        Name = 'GUI Check',
-        Default = true
-    })
-    ReleaseDepth = AutoBank:CreateSlider({
-        Name = 'Release Depth',
         Min = 1,
-        Max = 10,
-        Default = 4.5,
-        Decimal = 10,
+        Max = 30,
+        Default = 8,
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
     })
-    BankDebug = AutoBank:CreateToggle({
-        Name = 'Debug',
+    GUICheck = AutoBankV3:CreateToggle({
+        Name = 'GUI Check',
         Default = true
     })
 end)
