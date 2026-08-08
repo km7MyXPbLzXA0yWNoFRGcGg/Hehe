@@ -461,9 +461,7 @@ local function joinQueue()
 	end
 end
 
-local function lobby()
-    bedwars.Client:Get(remotes.TeleportToLobby):FireServer()
-end
+
 
 local kitorder = {
 	hannah = 5,
