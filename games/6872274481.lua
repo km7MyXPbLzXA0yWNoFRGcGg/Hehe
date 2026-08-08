@@ -33165,8 +33165,7 @@ run(function()
         local toolInfo = store.tools and store.tools[meta.block.breakType]
         if not toolInfo then return end
 
-        -- Prefer existing helper getHotbar if available, fallback to scanning inventory
-        if typeof(getHotbar) == "function" then
+        if type(getHotbar) == "function" then
             local slot = getHotbar(toolInfo.tool)
             if slot and store.inventory.hotbarSlot ~= slot then
                 bedwars.Store:dispatch({ type = 'InventorySelectHotbarSlot', slot = slot })
@@ -33186,8 +33185,7 @@ run(function()
             end
         end
 
-        -- final fallback: try a generic switchItem if present
-        if typeof(switchItem) == "function" then
+        if type(switchItem) == "function" then
             switchItem(toolInfo.tool)
         end
     end
@@ -33284,7 +33282,7 @@ run(function()
     end
 
     local function strike(block, hitInfo)
-        if lplr:GetAttribute('DenyBlockBreak') or not entitylib.isAlive or InfiniteFly.Enabled then return false end
+        if lplr:GetAttribute('DenyBlockBreak') or not entitylib.isAlive or (InfiniteFly and InfiniteFly.Enabled) then return false end
 
         local gridPos = hitInfo and hitInfo.gridPos or bedwars.BlockController:getBlockPosition(block.Position)
         equipFor(block)
@@ -33510,7 +33508,6 @@ run(function()
         Name = 'KingDraco',
         Function = function(callback)
             if callback then
-                -- create highlights and input handlers
                 targetGlow = Instance.new('Highlight')
                 targetGlow.FillTransparency = 0.75
                 targetGlow.OutlineTransparency = 0
