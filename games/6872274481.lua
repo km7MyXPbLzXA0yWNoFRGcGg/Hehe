@@ -1,7 +1,7 @@
 local run = function(func)
     local ok, err = pcall(func)
     if not ok then
-        warn('[AEROV4] module failed to load: ' .. tostring(err))
+        warn('cant LOAD: ' .. tostring(err))
     end
 end
 local vapeEvents = setmetatable({}, {
