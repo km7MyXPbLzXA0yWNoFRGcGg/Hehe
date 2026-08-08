@@ -18826,27 +18826,6 @@ run(function()
 end)
 
 run(function()
-	local Lobby
-	Lobby = vape.Categories.Utility:CreateModule({
-		Name = 'Lobby',
-		Function = function(callback)
-			if not callback then
-				return
-			end
-			Lobby:Toggle(false)
-			local s,err = pcall(function()
-				bedwars.Client:Get(remotes.TeleportToLobby):SendToServer()
-			end)
-			if not s then
-				warn(err)
-				task.wait(8)
-				lobby()
-			end
-		end
-	})
-end)
-
-run(function()
     local Players = playersService
     local RunService = runService    
     local Fisherman
