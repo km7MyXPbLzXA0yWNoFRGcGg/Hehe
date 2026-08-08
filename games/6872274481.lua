@@ -6047,7 +6047,7 @@ run(function()
 	local old
 	
 	local ProjectileAimbot = vape.Categories.Blatant:CreateModule({
-		Name = 'SxvyPA',
+		Name = 'ProjectileAimbot',
 		Function = function(callback)
 			if callback then
 				old = bedwars.ProjectileController.calculateImportantLaunchValues
@@ -6086,6 +6086,14 @@ run(function()
 	
 						if plr.Character.PrimaryPart:FindFirstChild('rbxassetid://8200754399') then
 							playerGravity = 6
+						end
+	
+						if plr.Player:GetAttribute('IsOwlTarget') then
+							for _, owl in collectionService:GetTagged('Owl') do
+								if owl:GetAttribute('Target') == plr.Player.UserId and owl:GetAttribute('Status') == 2 then
+									playerGravity = 0
+								end
+							end
 						end
 	
 						local newlook = CFrame.new(offsetpos, plr[TargetPart.Value].Position) * CFrame.new(projmeta.projectile == 'owl_projectile' and Vector3.zero or Vector3.new(bedwars.BowConstantsTable.RelX, bedwars.BowConstantsTable.RelY, bedwars.BowConstantsTable.RelZ))
@@ -6129,12 +6137,6 @@ run(function()
 		Default = true
 	})
 end)
-	
-local function isFirstPerson()
-	if not (lplr.Character and lplr.Character:FindFirstChild("Head")) then return false end
-	return (lplr.Character.Head.Position - gameCamera.CFrame.Position).Magnitude < 2
-end
-
 
 run(function()
 
