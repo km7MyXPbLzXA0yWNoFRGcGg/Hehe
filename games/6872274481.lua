@@ -11703,7 +11703,6 @@ run(function()
     })
 end)
 
-	
 run(function()
 	local ChestSteal
 	local Range
