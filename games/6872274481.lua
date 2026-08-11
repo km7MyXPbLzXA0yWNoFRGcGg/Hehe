@@ -110,6 +110,19 @@ local function isUILayerOpen(layer)
 	return suc and res or false
 end
 
+local function knitController(name)
+	local knit = bedwars.Knit
+	local controllers = knit and knit.Controllers
+	return controllers and controllers[name] or nil
+end
+
+local function getMatchState()
+	local controller = knitController('MatchController')
+	if not controller then return nil end
+	local suc, res = pcall(controller.getMatchState, controller)
+	return suc and res or nil
+end
+
 local swordControllerFallback = {
 	lastAttack = 0,
 	lastSwing = 0,
@@ -884,61 +897,75 @@ run(function()
 		return found and found[member] or nil
 	end
 
-	local Flamework = require(replicatedStorage['rbxts_include']['node_modules']['@flamework'].core.out).Flamework
-	local InventoryUtil = require(replicatedStorage.TS.inventory['inventory-util']).InventoryUtil
+	local function safeResolve(getter)
+		local suc, res = pcall(getter)
+		return suc and res or nil
+	end
+
+	local Flamework = safeResolve(function() return require(replicatedStorage['rbxts_include']['node_modules']['@flamework'].core.out).Flamework end)
+	local InventoryUtil = safeResolve(function() return require(replicatedStorage.TS.inventory['inventory-util']).InventoryUtil end)
 	local Client = require(replicatedStorage.TS.remotes).default.Client
 	local OldGet, OldBreak = Client.Get
 
-	bedwars = setmetatable({
-		RankMeta = require(replicatedStorage.TS.rank['rank-meta']).RankMeta,
-        BalanceFile = require(replicatedStorage.TS.balance["balance-file"]).BalanceFile,
-        ClientSyncEvents = require(lplr.PlayerScripts.TS['client-sync-events']).ClientSyncEvents,
-        SyncEventPriority = require(replicatedStorage.rbxts_include.node_modules['@easy-games']['sync-event'].out),
-		AbilityId = require(replicatedStorage.TS.ability['ability-id']).AbilityId,
-        IdUtil = require(replicatedStorage.TS.util['id-util']).IdUtil,
-		BlockSelector = require(game:GetService("ReplicatedStorage").rbxts_include.node_modules["@easy-games"]["block-engine"].out.client.select["block-selector"]).BlockSelector,
-		KnockbackUtilInstance = replicatedStorage.TS.damage['knockback-util'],
-		BedwarsKitSkin = require(replicatedStorage.TS.games.bedwars['kit-skin']['bedwars-kit-skin-meta']).BedwarsKitSkinMeta,
-		KitController = Knit.Controllers.KitController,
-		FishermanUtil = require(replicatedStorage.TS.games.bedwars.kit.kits.fisherman['fisherman-util']).FishermanUtil,
-		FishMeta = require(replicatedStorage.TS.games.bedwars.kit.kits.fisherman['fish-meta']),
-	 	MatchHistroyApp = require(lplr.PlayerScripts.TS.controllers.global["match-history"].ui["match-history-moderation-app"]).MatchHistoryModerationApp,
-	 	MatchHistroyController = Knit.Controllers.MatchHistoryController,
-		BlockEngine = require(game:GetService("ReplicatedStorage").rbxts_include.node_modules["@easy-games"]["block-engine"].out).BlockEngine,
-		BlockSelectorMode = require(game:GetService("ReplicatedStorage").rbxts_include.node_modules["@easy-games"]["block-engine"].out.client.select["block-selector"]).BlockSelectorMode,
-		EntityUtil = require(game:GetService("ReplicatedStorage").TS.entity["entity-util"]).EntityUtil,
-		GamePlayer = require(replicatedStorage.TS.player['game-player']),
-		OfflinePlayerUtil = require(replicatedStorage.TS.player['offline-player-util']),
-		PlayerUtil = require(replicatedStorage.TS.player['player-util']),
-		KKKnitController = require(lplr.PlayerScripts.TS.lib.knit['knit-controller']),
-		AbilityController = Flamework.resolveDependency('@easy-games/game-core:client/controllers/ability/ability-controller@AbilityController'),
-		CooldownController = Flamework.resolveDependency("@easy-games/game-core:client/controllers/cooldown/cooldown-controller@CooldownController"),
-		AnimationType = require(replicatedStorage.TS.animation['animation-type']).AnimationType,
-		AnimationUtil = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out['shared'].util['animation-util']).AnimationUtil,
-		AppController = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.controllers['app-controller']).AppController,
-		BedBreakEffectMeta = require(replicatedStorage.TS.locker['bed-break-effect']['bed-break-effect-meta']).BedBreakEffectMeta,
-		BedwarsKitMeta = require(replicatedStorage.TS.games.bedwars.kit['bedwars-kit-meta']).BedwarsKitMeta,
-		BlockBreaker = knitMember('BlockBreakController', 'blockBreaker'),
-		BlockController = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out).BlockEngine,
-		BlockEngine = require(lplr.PlayerScripts.TS.lib['block-engine']['client-block-engine']).ClientBlockEngine,
-		BlockPlacer = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out.client.placement['block-placer']).BlockPlacer,
-		BowConstantsTable = knitMember('ProjectileController', 'enableBeam') and debug.getupvalue(knitMember('ProjectileController', 'enableBeam'), 8) or {},
-		ClickHold = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.ui.lib.util['click-hold']).ClickHold,
-		Client = Client,
-		ClientConstructor = require(replicatedStorage['rbxts_include']['node_modules']['@rbxts'].net.out.client),
-		ClientDamageBlock = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out.shared.remotes).BlockEngineRemotes.Client,
-		CombatConstant = require(replicatedStorage.TS.combat['combat-constant']).CombatConstant,
-		SharedConstants = require(replicatedStorage.TS['shared-constants']),
-		DamageIndicator = knitMember('DamageIndicatorController', 'spawnDamageIndicator'),
-		DefaultKillEffect = require(lplr.PlayerScripts.TS.controllers.global.locker['kill-effect'].effects['default-kill-effect']),
-		EmoteType = require(replicatedStorage.TS.locker.emote['emote-type']).EmoteType,
-		GameAnimationUtil = require(replicatedStorage.TS.animation['animation-util']).GameAnimationUtil,
-		NotificationController = Flamework.resolveDependency('@easy-games/game-core:client/controllers/notification-controller@NotificationController'),
-		getIcon = function(item, showinv)
+	local bedwarsFields = {}
+	local function bedwarsField(name, getter)
+		local suc, res = pcall(getter)
+		if not suc then
+			warn('[vape] failed to resolve bedwars.'..name..': '..tostring(res))
+			return
+		end
+		bedwarsFields[name] = res
+	end
+
+	bedwarsField('RankMeta', function() return require(replicatedStorage.TS.rank['rank-meta']).RankMeta end)
+	bedwarsField('BalanceFile', function() return require(replicatedStorage.TS.balance["balance-file"]).BalanceFile end)
+	bedwarsField('ClientSyncEvents', function() return require(lplr.PlayerScripts.TS['client-sync-events']).ClientSyncEvents end)
+	bedwarsField('SyncEventPriority', function() return require(replicatedStorage.rbxts_include.node_modules['@easy-games']['sync-event'].out) end)
+	bedwarsField('AbilityId', function() return require(replicatedStorage.TS.ability['ability-id']).AbilityId end)
+	bedwarsField('IdUtil', function() return require(replicatedStorage.TS.util['id-util']).IdUtil end)
+	bedwarsField('BlockSelector', function() return require(game:GetService("ReplicatedStorage").rbxts_include.node_modules["@easy-games"]["block-engine"].out.client.select["block-selector"]).BlockSelector end)
+	bedwarsField('KnockbackUtilInstance', function() return replicatedStorage.TS.damage['knockback-util'] end)
+	bedwarsField('BedwarsKitSkin', function() return require(replicatedStorage.TS.games.bedwars['kit-skin']['bedwars-kit-skin-meta']).BedwarsKitSkinMeta end)
+	bedwarsField('KitController', function() return Knit.Controllers.KitController end)
+	bedwarsField('FishermanUtil', function() return require(replicatedStorage.TS.games.bedwars.kit.kits.fisherman['fisherman-util']).FishermanUtil end)
+	bedwarsField('FishMeta', function() return require(replicatedStorage.TS.games.bedwars.kit.kits.fisherman['fish-meta']) end)
+	bedwarsField('MatchHistroyApp', function() return require(lplr.PlayerScripts.TS.controllers.global["match-history"].ui["match-history-moderation-app"]).MatchHistoryModerationApp end)
+	bedwarsField('MatchHistroyController', function() return Knit.Controllers.MatchHistoryController end)
+	bedwarsField('BlockEngine', function() return require(game:GetService("ReplicatedStorage").rbxts_include.node_modules["@easy-games"]["block-engine"].out).BlockEngine end)
+	bedwarsField('BlockSelectorMode', function() return require(game:GetService("ReplicatedStorage").rbxts_include.node_modules["@easy-games"]["block-engine"].out.client.select["block-selector"]).BlockSelectorMode end)
+	bedwarsField('EntityUtil', function() return require(game:GetService("ReplicatedStorage").TS.entity["entity-util"]).EntityUtil end)
+	bedwarsField('GamePlayer', function() return require(replicatedStorage.TS.player['game-player']) end)
+	bedwarsField('OfflinePlayerUtil', function() return require(replicatedStorage.TS.player['offline-player-util']) end)
+	bedwarsField('PlayerUtil', function() return require(replicatedStorage.TS.player['player-util']) end)
+	bedwarsField('KKKnitController', function() return require(lplr.PlayerScripts.TS.lib.knit['knit-controller']) end)
+	bedwarsField('AbilityController', function() return Flamework.resolveDependency('@easy-games/game-core:client/controllers/ability/ability-controller@AbilityController') end)
+	bedwarsField('CooldownController', function() return Flamework.resolveDependency("@easy-games/game-core:client/controllers/cooldown/cooldown-controller@CooldownController") end)
+	bedwarsField('AnimationType', function() return require(replicatedStorage.TS.animation['animation-type']).AnimationType end)
+	bedwarsField('AnimationUtil', function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out['shared'].util['animation-util']).AnimationUtil end)
+	bedwarsField('AppController', function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.controllers['app-controller']).AppController end)
+	bedwarsField('BedBreakEffectMeta', function() return require(replicatedStorage.TS.locker['bed-break-effect']['bed-break-effect-meta']).BedBreakEffectMeta end)
+	bedwarsField('BedwarsKitMeta', function() return require(replicatedStorage.TS.games.bedwars.kit['bedwars-kit-meta']).BedwarsKitMeta end)
+	bedwarsField('BlockBreaker', function() return knitMember('BlockBreakController', 'blockBreaker') end)
+	bedwarsField('BlockController', function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out).BlockEngine end)
+	bedwarsField('BlockEngine', function() return require(lplr.PlayerScripts.TS.lib['block-engine']['client-block-engine']).ClientBlockEngine end)
+	bedwarsField('BlockPlacer', function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out.client.placement['block-placer']).BlockPlacer end)
+	bedwarsField('BowConstantsTable', function() return knitMember('ProjectileController', 'enableBeam') and debug.getupvalue(knitMember('ProjectileController', 'enableBeam'), 8) or {} end)
+	bedwarsField('ClickHold', function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.ui.lib.util['click-hold']).ClickHold end)
+	bedwarsField('Client', function() return Client end)
+	bedwarsField('ClientConstructor', function() return require(replicatedStorage['rbxts_include']['node_modules']['@rbxts'].net.out.client) end)
+	bedwarsField('ClientDamageBlock', function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out.shared.remotes).BlockEngineRemotes.Client end)
+	bedwarsField('CombatConstant', function() return require(replicatedStorage.TS.combat['combat-constant']).CombatConstant end)
+	bedwarsField('SharedConstants', function() return require(replicatedStorage.TS['shared-constants']) end)
+	bedwarsField('DamageIndicator', function() return knitMember('DamageIndicatorController', 'spawnDamageIndicator') end)
+	bedwarsField('DefaultKillEffect', function() return require(lplr.PlayerScripts.TS.controllers.global.locker['kill-effect'].effects['default-kill-effect']) end)
+	bedwarsField('EmoteType', function() return require(replicatedStorage.TS.locker.emote['emote-type']).EmoteType end)
+	bedwarsField('GameAnimationUtil', function() return require(replicatedStorage.TS.animation['animation-util']).GameAnimationUtil end)
+	bedwarsField('NotificationController', function() return Flamework.resolveDependency('@easy-games/game-core:client/controllers/notification-controller@NotificationController') end)
+	bedwarsFields.getIcon = function(item, showinv)
 			local itemmeta = bedwars.ItemMeta[item.itemType]
 			return itemmeta and showinv and itemmeta.image or ''
-		end,
-		getInventory = function(plr)
+	end
+	bedwarsFields.getInventory = function(plr)
 			local suc, res = pcall(function()
 				return InventoryUtil.getInventory(plr)
 			end)
@@ -946,36 +973,37 @@ run(function()
 				items = {},
 				armor = {}
 			}
-		end,
-		MatchHistoryController = require(lplr.PlayerScripts.TS.controllers.global['match-history']['match-history-controller']),
-		PlayerProfileUIController = require(lplr.PlayerScripts.TS.controllers.global['player-profile']['player-profile-ui-controller']),
-		HudAliveCount = require(lplr.PlayerScripts.TS.controllers.global['top-bar'].ui.game['hud-alive-player-counts']).HudAlivePlayerCounts,
-		ItemMeta = debug.getupvalue(require(replicatedStorage.TS.item['item-meta']).getItemMeta, 1),
-		KillEffectMeta = require(replicatedStorage.TS.locker['kill-effect']['kill-effect-meta']).KillEffectMeta,
-		KillFeedController = Flamework.resolveDependency('client/controllers/game/kill-feed/kill-feed-controller@KillFeedController'),
-		Knit = Knit,
-		KnockbackUtil = require(replicatedStorage.TS.damage['knockback-util']).KnockbackUtil,
-		MageKitUtil = require(replicatedStorage.TS.games.bedwars.kit.kits.mage['mage-kit-util']).MageKitUtil,
-		NametagController = Knit.Controllers.NametagController,
-		PartyController = Flamework.resolveDependency("@easy-games/lobby:client/controllers/party-controller@PartyController"),
-		ProjectileMeta = require(replicatedStorage.TS.projectile['projectile-meta']).ProjectileMeta,
-		QueryUtil = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out).GameQueryUtil,
-		QueueCard = require(lplr.PlayerScripts.TS.controllers.global.queue.ui['queue-card']).QueueCard,
-		QueueMeta = require(replicatedStorage.TS.game['queue-meta']).QueueMeta,
-		Roact = require(replicatedStorage['rbxts_include']['node_modules']['@rbxts']['roact'].src),
-		RuntimeLib = require(replicatedStorage['rbxts_include'].RuntimeLib),
-		SoundList = require(replicatedStorage.TS.sound['game-sound']).GameSound,
-		SoundManager = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.shared.sound['sound-manager']).SoundManager,
-		Store = require(lplr.PlayerScripts.TS.ui.store).ClientStore,
-		TeamUpgradeMeta = debug.getupvalue(require(replicatedStorage.TS.games.bedwars['team-upgrade']['team-upgrade-meta']).getTeamUpgradeMetaForQueue, 6),
-		UILayers = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out).UILayers,
-		VisualizerUtils = require(lplr.PlayerScripts.TS.lib.visualizer['visualizer-utils']).VisualizerUtils,
-		WeldTable = require(replicatedStorage.TS.util['weld-util']).WeldUtil,
-		WinEffectMeta = require(replicatedStorage.TS.locker['win-effect']['win-effect-meta']).WinEffectMeta,
-		ZapNetworking = require(lplr.PlayerScripts.TS.lib.network),
-	}, {
+	end
+	bedwarsField('MatchHistoryController', function() return require(lplr.PlayerScripts.TS.controllers.global['match-history']['match-history-controller']) end)
+	bedwarsField('PlayerProfileUIController', function() return require(lplr.PlayerScripts.TS.controllers.global['player-profile']['player-profile-ui-controller']) end)
+	bedwarsField('HudAliveCount', function() return require(lplr.PlayerScripts.TS.controllers.global['top-bar'].ui.game['hud-alive-player-counts']).HudAlivePlayerCounts end)
+	bedwarsField('ItemMeta', function() return debug.getupvalue(require(replicatedStorage.TS.item['item-meta']).getItemMeta, 1) end)
+	bedwarsField('KillEffectMeta', function() return require(replicatedStorage.TS.locker['kill-effect']['kill-effect-meta']).KillEffectMeta end)
+	bedwarsField('KillFeedController', function() return Flamework.resolveDependency('client/controllers/game/kill-feed/kill-feed-controller@KillFeedController') end)
+	bedwarsField('Knit', function() return Knit end)
+	bedwarsField('KnockbackUtil', function() return require(replicatedStorage.TS.damage['knockback-util']).KnockbackUtil end)
+	bedwarsField('MageKitUtil', function() return require(replicatedStorage.TS.games.bedwars.kit.kits.mage['mage-kit-util']).MageKitUtil end)
+	bedwarsField('NametagController', function() return Knit.Controllers.NametagController end)
+	bedwarsField('PartyController', function() return Flamework.resolveDependency("@easy-games/lobby:client/controllers/party-controller@PartyController") end)
+	bedwarsField('ProjectileMeta', function() return require(replicatedStorage.TS.projectile['projectile-meta']).ProjectileMeta end)
+	bedwarsField('QueryUtil', function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out).GameQueryUtil end)
+	bedwarsField('QueueCard', function() return require(lplr.PlayerScripts.TS.controllers.global.queue.ui['queue-card']).QueueCard end)
+	bedwarsField('QueueMeta', function() return require(replicatedStorage.TS.game['queue-meta']).QueueMeta end)
+	bedwarsField('Roact', function() return require(replicatedStorage['rbxts_include']['node_modules']['@rbxts']['roact'].src) end)
+	bedwarsField('RuntimeLib', function() return require(replicatedStorage['rbxts_include'].RuntimeLib) end)
+	bedwarsField('SoundList', function() return require(replicatedStorage.TS.sound['game-sound']).GameSound end)
+	bedwarsField('SoundManager', function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.shared.sound['sound-manager']).SoundManager end)
+	bedwarsField('Store', function() return require(lplr.PlayerScripts.TS.ui.store).ClientStore end)
+	bedwarsField('TeamUpgradeMeta', function() return debug.getupvalue(require(replicatedStorage.TS.games.bedwars['team-upgrade']['team-upgrade-meta']).getTeamUpgradeMetaForQueue, 6) end)
+	bedwarsField('UILayers', function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out).UILayers end)
+	bedwarsField('VisualizerUtils', function() return require(lplr.PlayerScripts.TS.lib.visualizer['visualizer-utils']).VisualizerUtils end)
+	bedwarsField('WeldTable', function() return require(replicatedStorage.TS.util['weld-util']).WeldUtil end)
+	bedwarsField('WinEffectMeta', function() return require(replicatedStorage.TS.locker['win-effect']['win-effect-meta']).WinEffectMeta end)
+	bedwarsField('ZapNetworking', function() return require(lplr.PlayerScripts.TS.lib.network) end)
+
+	bedwars = setmetatable(bedwarsFields, {
 		__index = function(self, ind)
-			rawset(self, ind, Knit.Controllers[ind])
+			rawset(self, ind, Knit.Controllers and Knit.Controllers[ind])
 			return rawget(self, ind)
 		end
 	})
@@ -995,7 +1023,7 @@ run(function()
 		DragonEndFly = safeGetProto(knitMember('VoidDragonController', 'flapWings'), 1),
 		DragonFly = knitMember('VoidDragonController', 'flapWings'),
 		DropItem = knitMember('ItemDropController', 'dropItemInHand'),
-		EquipItem = safeGetProto(require(replicatedStorage.TS.entity.entities['inventory-entity']).InventoryEntity.equipItem, 3),
+		EquipItem = safeGetProto(safeResolve(function() return require(replicatedStorage.TS.entity.entities['inventory-entity']).InventoryEntity.equipItem end), 3),
 		FireProjectile = knitMember('ProjectileController', 'launchProjectileWithValues') and debug.getupvalue(knitMember('ProjectileController', 'launchProjectileWithValues'), 2),
 		GroundHit = knitMember('FallDamageController', 'KnitStart'),
 		GuitarHeal = knitMember('GuitarController', 'performHeal'),
@@ -1006,7 +1034,7 @@ run(function()
 		MinerDig = safeGetProto(knitMember('MinerController', 'setupMinerPrompts'), 1),
 		PickupItem = knitMember('ItemDropController', 'checkForPickup'),
 		PickupMetal = safeGetProto(knitMember('HiddenMetalController', 'onKitLocalActivated'), 4),
-		ReportPlayer = require(lplr.PlayerScripts.TS.controllers.global.report['report-controller']).default.reportPlayer,
+		ReportPlayer = safeResolve(function() return require(lplr.PlayerScripts.TS.controllers.global.report['report-controller']).default.reportPlayer end),
 		ResetCharacter = safeGetProto(knitMember('ResetController', 'createBindable'), 1),
 		SummonerClawAttack = knitMember('SummonerClawHandController', 'attack'),
 		WarlockTarget = safeGetProto(knitMember('WarlockStaffController', 'KnitStart'), 2)
@@ -9306,7 +9334,7 @@ run(function()
 					end)
 
 					if ok and result and result.success then
-						local NecroController = bedwars.Knit.Controllers.NecromancerController
+						local NecroController = knitController('NecromancerController')
 						if NecroController then
 							pcall(function()
 								NecroController:useGravestone(lplr, v)
@@ -9452,7 +9480,7 @@ run(function()
 						if not hasScanner then task.wait(0.1); continue end
 					end
 
-					local DefenderController = bedwars.Knit.Controllers.DefenderKitController
+					local DefenderController = knitController('DefenderKitController')
 					if not DefenderController then task.wait(0.1); continue end
 
 					for blockPos, _ in DefenderController.currentSchematic do
@@ -17330,7 +17358,7 @@ run(function()
         Function = function(callback)
             if callback then
                 NoFall:Clean(runService.Heartbeat:Connect(function(dt)
-                    if entitylib.isAlive and bedwars.Knit.Controllers.MatchController:getMatchState() == 1 then
+                    if entitylib.isAlive and getMatchState() == 1 then
                         local root = entitylib.character.RootPart
                         local v = root.Velocity
 
@@ -34349,7 +34377,7 @@ run(function()
 		Name = 'AutoXP',
 		Function = function(callback)
 			if callback then
-				repeat task.wait(1) until bedwars.Knit.Controllers.MatchController:getMatchState() == 1
+				repeat task.wait(1) until getMatchState() == 1
 
 				local chests = {}
 				for _, value in workspace:GetChildren() do
