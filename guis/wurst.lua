@@ -288,6 +288,11 @@ function mainapi:Clean(obj)
 	elseif type(obj) == 'function' then
 		table.insert(self.Connections, {Disconnect = obj})
 		return
+	elseif type(obj) == 'thread' then
+		table.insert(self.Connections, {Disconnect = function()
+			pcall(task.cancel, obj)
+		end})
+		return
 	end
 	table.insert(self.Connections, obj)
 end
@@ -367,6 +372,11 @@ function mainapi:CreateCategory(categorysettings)
 				return
 			elseif type(obj) == 'function' then
 				table.insert(self.Connections, {Disconnect = obj})
+				return
+			elseif type(obj) == 'thread' then
+				table.insert(self.Connections, {Disconnect = function()
+					pcall(task.cancel, obj)
+				end})
 				return
 			end
 			table.insert(self.Connections, obj)

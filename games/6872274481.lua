@@ -101,6 +101,45 @@ local TrapDisabler
 local AntiFallPart
 local bedwars, remotes, sides, oldinvrender, oldSwing = {}, {}, {}
 
+local defaultUILayers = {MAIN = 'MAIN', DIALOG = 'DIALOG', POPUP = 'POPUP', HUD = 'HUD'}
+local function isUILayerOpen(layer)
+	local controller = bedwars.AppController
+	if not controller then return false end
+	local layers = bedwars.UILayers
+	local suc, res = pcall(controller.isLayerOpen, controller, (layers and layers[layer]) or defaultUILayers[layer] or layer)
+	return suc and res or false
+end
+
+local swordControllerFallback = {
+	lastAttack = 0,
+	lastSwing = 0,
+	playSwordEffect = function() end,
+	swingSwordAtMouse = function() end,
+	swingSwordInRegion = function() end,
+	toggleSwordSwing = function() end,
+	getTargetInRegion = function() end
+}
+local scytheControllerFallback = {playLocalAnimation = function() end}
+
+local function getSwordController()
+	return bedwars.SwordController or swordControllerFallback
+end
+
+local function getScytheController()
+	return bedwars.ScytheController or scytheControllerFallback
+end
+
+local function setSwingUpvalues(value)
+	local swing = oldSwing or getSwordController().playSwordEffect
+	if swing then
+		pcall(debug.setupvalue, swing, 6, value)
+	end
+	local scythe = getScytheController().playLocalAnimation
+	if scythe then
+		pcall(debug.setupvalue, scythe, 3, value)
+	end
+end
+
 local function addBlur(parent)
 	local blur = Instance.new('ImageLabel')
 	blur.Name = 'Blur'
@@ -840,6 +879,11 @@ run(function()
 		repeat task.wait() until debug.getupvalue(Knit.Start, 1)
 	end
 
+	local function knitMember(controller, member)
+		local found = Knit.Controllers and Knit.Controllers[controller]
+		return found and found[member] or nil
+	end
+
 	local Flamework = require(replicatedStorage['rbxts_include']['node_modules']['@flamework'].core.out).Flamework
 	local InventoryUtil = require(replicatedStorage.TS.inventory['inventory-util']).InventoryUtil
 	local Client = require(replicatedStorage.TS.remotes).default.Client
@@ -874,18 +918,18 @@ run(function()
 		AppController = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.controllers['app-controller']).AppController,
 		BedBreakEffectMeta = require(replicatedStorage.TS.locker['bed-break-effect']['bed-break-effect-meta']).BedBreakEffectMeta,
 		BedwarsKitMeta = require(replicatedStorage.TS.games.bedwars.kit['bedwars-kit-meta']).BedwarsKitMeta,
-		BlockBreaker = Knit.Controllers.BlockBreakController.blockBreaker,
+		BlockBreaker = knitMember('BlockBreakController', 'blockBreaker'),
 		BlockController = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out).BlockEngine,
 		BlockEngine = require(lplr.PlayerScripts.TS.lib['block-engine']['client-block-engine']).ClientBlockEngine,
 		BlockPlacer = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out.client.placement['block-placer']).BlockPlacer,
-		BowConstantsTable = (Knit.Controllers.ProjectileController and Knit.Controllers.ProjectileController.enableBeam) and debug.getupvalue(Knit.Controllers.ProjectileController.enableBeam, 8) or {},
+		BowConstantsTable = knitMember('ProjectileController', 'enableBeam') and debug.getupvalue(knitMember('ProjectileController', 'enableBeam'), 8) or {},
 		ClickHold = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.ui.lib.util['click-hold']).ClickHold,
 		Client = Client,
 		ClientConstructor = require(replicatedStorage['rbxts_include']['node_modules']['@rbxts'].net.out.client),
 		ClientDamageBlock = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out.shared.remotes).BlockEngineRemotes.Client,
 		CombatConstant = require(replicatedStorage.TS.combat['combat-constant']).CombatConstant,
 		SharedConstants = require(replicatedStorage.TS['shared-constants']),
-		DamageIndicator = Knit.Controllers.DamageIndicatorController.spawnDamageIndicator,
+		DamageIndicator = knitMember('DamageIndicatorController', 'spawnDamageIndicator'),
 		DefaultKillEffect = require(lplr.PlayerScripts.TS.controllers.global.locker['kill-effect'].effects['default-kill-effect']),
 		EmoteType = require(replicatedStorage.TS.locker.emote['emote-type']).EmoteType,
 		GameAnimationUtil = require(replicatedStorage.TS.animation['animation-util']).GameAnimationUtil,
@@ -937,35 +981,35 @@ run(function()
 	})
 
 	local remoteNames = {
-		AfkStatus = safeGetProto(Knit.Controllers.AfkController.KnitStart, 1),
-		AttackEntity = Knit.Controllers.SwordController.sendServerRequest,
-		BeePickup = Knit.Controllers.BeeNetController.trigger,
-		CannonAim = safeGetProto(Knit.Controllers.CannonController.startAiming, 5),
-		CannonLaunch = Knit.Controllers.CannonHandController.launchSelf,
-		ConsumeBattery = safeGetProto(Knit.Controllers.BatteryController.onKitLocalActivated, 1),
-		ConsumeItem = safeGetProto(Knit.Controllers.ConsumeController.onEnable, 1),
-		ConsumeSoul = Knit.Controllers.GrimReaperController.consumeSoul,
-		ConsumeTreeOrb = safeGetProto(Knit.Controllers.EldertreeController.createTreeOrbInteraction, 1),
-		DepositPinata = safeGetProto(safeGetProto(Knit.Controllers.PiggyBankController.KnitStart, 2), 5),
-		DragonBreath = safeGetProto(Knit.Controllers.VoidDragonController.onKitLocalActivated, 5),
-		DragonEndFly = safeGetProto(Knit.Controllers.VoidDragonController.flapWings, 1),
-		DragonFly = Knit.Controllers.VoidDragonController.flapWings,
-		DropItem = Knit.Controllers.ItemDropController.dropItemInHand,
+		AfkStatus = safeGetProto(knitMember('AfkController', 'KnitStart'), 1),
+		AttackEntity = knitMember('SwordController', 'sendServerRequest'),
+		BeePickup = knitMember('BeeNetController', 'trigger'),
+		CannonAim = safeGetProto(knitMember('CannonController', 'startAiming'), 5),
+		CannonLaunch = knitMember('CannonHandController', 'launchSelf'),
+		ConsumeBattery = safeGetProto(knitMember('BatteryController', 'onKitLocalActivated'), 1),
+		ConsumeItem = safeGetProto(knitMember('ConsumeController', 'onEnable'), 1),
+		ConsumeSoul = knitMember('GrimReaperController', 'consumeSoul'),
+		ConsumeTreeOrb = safeGetProto(knitMember('EldertreeController', 'createTreeOrbInteraction'), 1),
+		DepositPinata = safeGetProto(safeGetProto(knitMember('PiggyBankController', 'KnitStart'), 2), 5),
+		DragonBreath = safeGetProto(knitMember('VoidDragonController', 'onKitLocalActivated'), 5),
+		DragonEndFly = safeGetProto(knitMember('VoidDragonController', 'flapWings'), 1),
+		DragonFly = knitMember('VoidDragonController', 'flapWings'),
+		DropItem = knitMember('ItemDropController', 'dropItemInHand'),
 		EquipItem = safeGetProto(require(replicatedStorage.TS.entity.entities['inventory-entity']).InventoryEntity.equipItem, 3),
-		FireProjectile = debug.getupvalue(Knit.Controllers.ProjectileController.launchProjectileWithValues, 2),
-		GroundHit = Knit.Controllers.FallDamageController.KnitStart,
-		GuitarHeal = Knit.Controllers.GuitarController.performHeal,
-		HannahKill = safeGetProto(Knit.Controllers.HannahController.registerExecuteInteractions, 1),
-		HarvestCrop = safeGetProto(safeGetProto(Knit.Controllers.CropController.KnitStart, 4), 1),
-		KaliyahPunch = safeGetProto(Knit.Controllers.DragonSlayerController.onKitLocalActivated, 1),
-		MageSelect = safeGetProto(Knit.Controllers.MageController.registerTomeInteraction, 1),
-		MinerDig = safeGetProto(Knit.Controllers.MinerController.setupMinerPrompts, 1),
-		PickupItem = Knit.Controllers.ItemDropController.checkForPickup,
-		PickupMetal = safeGetProto(Knit.Controllers.HiddenMetalController.onKitLocalActivated, 4),
+		FireProjectile = knitMember('ProjectileController', 'launchProjectileWithValues') and debug.getupvalue(knitMember('ProjectileController', 'launchProjectileWithValues'), 2),
+		GroundHit = knitMember('FallDamageController', 'KnitStart'),
+		GuitarHeal = knitMember('GuitarController', 'performHeal'),
+		HannahKill = safeGetProto(knitMember('HannahController', 'registerExecuteInteractions'), 1),
+		HarvestCrop = safeGetProto(safeGetProto(knitMember('CropController', 'KnitStart'), 4), 1),
+		KaliyahPunch = safeGetProto(knitMember('DragonSlayerController', 'onKitLocalActivated'), 1),
+		MageSelect = safeGetProto(knitMember('MageController', 'registerTomeInteraction'), 1),
+		MinerDig = safeGetProto(knitMember('MinerController', 'setupMinerPrompts'), 1),
+		PickupItem = knitMember('ItemDropController', 'checkForPickup'),
+		PickupMetal = safeGetProto(knitMember('HiddenMetalController', 'onKitLocalActivated'), 4),
 		ReportPlayer = require(lplr.PlayerScripts.TS.controllers.global.report['report-controller']).default.reportPlayer,
-		ResetCharacter = safeGetProto(Knit.Controllers.ResetController.createBindable, 1),
-		SummonerClawAttack = Knit.Controllers.SummonerClawHandController.attack,
-		WarlockTarget = safeGetProto(Knit.Controllers.WarlockStaffController.KnitStart, 2)
+		ResetCharacter = safeGetProto(knitMember('ResetController', 'createBindable'), 1),
+		SummonerClawAttack = knitMember('SummonerClawHandController', 'attack'),
+		WarlockTarget = safeGetProto(knitMember('WarlockStaffController', 'KnitStart'), 2)
 	}
 
 	local function dumpRemote(tab)
@@ -1213,7 +1257,7 @@ run(function()
 			local dblock, dpos = getPlacedBlock(pos)
 			if not dblock then return end
 
-			if not nobreak and (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.2 then
+			if not nobreak and (workspace:GetServerTimeNow() - getSwordController().lastAttack) > 0.2 then
 				local breaktype = bedwars.ItemMeta[dblock.Name].block.breakType
 				local tool = store.tools[breaktype]
 				if tool then
@@ -1873,9 +1917,9 @@ local function blockProximity(pos, rangeBlocks)
 end
 
 local function isGUIOpen()
-    return bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN)
-        or bedwars.AppController:isLayerOpen(bedwars.UILayers.DIALOG)
-        or bedwars.AppController:isLayerOpen(bedwars.UILayers.POPUP)
+    return isUILayerOpen('MAIN')
+        or isUILayerOpen('DIALOG')
+        or isUILayerOpen('POPUP')
         or bedwars.AppController:isAppOpen('BedwarsItemShopApp')
         or (bedwars.Store:getState().Inventory and bedwars.Store:getState().Inventory.open)
 end
@@ -2139,7 +2183,7 @@ run(function()
 					end
 
 					if ClickAim and ClickAim.Enabled then
-						local sc = bedwars.SwordController
+						local sc = getSwordController()
 						if not sc or not sc.lastAttack or (workspace:GetServerTimeNow() - sc.lastAttack) >= 0.4 then
 							lockedTarget = nil
 							return
@@ -2667,7 +2711,7 @@ run(function()
 		Function = function(callback)
 			if callback then
 				ProjectileAimAssist:Clean(runService.RenderStepped:Connect(function(dt)
-					if not (entitylib.isAlive and isHoldingBowCrossbow() and ((not ClickAim.Enabled) or (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) < 0.4)) then
+					if not (entitylib.isAlive and isHoldingBowCrossbow() and ((not ClickAim.Enabled) or (workspace:GetServerTimeNow() - getSwordController().lastAttack) < 0.4)) then
 						lockedTarget = nil
 						currentTarget = nil
 						hasReacted = false
@@ -2988,7 +3032,7 @@ run(function()
 
             Thread = task.delay(1 / initialCPS.GetRandomValue(), function()
                 repeat
-                    if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+                    if not isUILayerOpen('MAIN') then
                         local blockPlacer = bedwars.BlockPlacementController and bedwars.BlockPlacementController.blockPlacer
                         local toolType = store.hand and store.hand.toolType
 
@@ -3005,7 +3049,7 @@ run(function()
                                 end
                             end)
                         elseif toolType == 'sword' then
-                            bedwars.SwordController:swingSwordAtMouse(0.39)
+                            getSwordController():swingSwordAtMouse(0.39)
                         end
                     end
 
@@ -3141,7 +3185,7 @@ run(function()
             if Thread then task.cancel(Thread) end
             Thread = task_spawn(function()
                 repeat
-                    if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+                    if not isUILayerOpen('MAIN') then
                         local toolType = store.hand and store.hand.toolType
                         if PlaceBlocksToggle.Enabled and toolType == 'block' then
                             local blockPlacer = bedwars.BlockPlacementController and bedwars.BlockPlacementController.blockPlacer
@@ -3154,7 +3198,7 @@ run(function()
                                 end
                             end
                         elseif SwingSwordToggle.Enabled and toolType == 'sword' then
-                            bedwars.SwordController:swingSwordAtMouse(0.39)
+                            getSwordController():swingSwordAtMouse(0.39)
                         end
                     end
 
@@ -3778,7 +3822,7 @@ run(function()
 					local doAttack = false
 					local holdingProjectile = isHoldingBowCrossbow(true)
 					
-					if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) and entitylib.isAlive then
+					if not isUILayerOpen('MAIN') and entitylib.isAlive then
 						if ProjectileMode.Enabled and holdingProjectile then
 							if ProjectileFirstPerson.Enabled and not isFirstPerson() then
 								wasHoldingProjectile = false
@@ -3829,11 +3873,11 @@ run(function()
 							end
 							
 							if not doAttack then
-								doAttack = bedwars.SwordController:getTargetInRegion(attackRange or 3.8 * 3, 0)
+								doAttack = getSwordController():getTargetInRegion(attackRange or 3.8 * 3, 0)
 							end
 							
 							if doAttack then
-								bedwars.SwordController:swingSwordAtMouse()
+								getSwordController():swingSwordAtMouse()
 							end
 						else
 							wasHoldingProjectile = false
@@ -4989,7 +5033,7 @@ run(function()
                 manuallyDisabled = false
                 updateExpandSize(Expand.Value)
                 if Mode.Value == 'Sword' then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (Expand.Value / 3))
+                    pcall(debug.setconstant, getSwordController().swingSwordInRegion, 6, (Expand.Value / 3))
                     set = true
                 else
                     HitBoxes:Clean(entitylib.Events.EntityAdded:Connect(function(ent)
@@ -5028,7 +5072,7 @@ run(function()
                     manuallyDisabled = true
                 end
                 if set then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, 3.8)
+                    pcall(debug.setconstant, getSwordController().swingSwordInRegion, 6, 3.8)
                     set = nil
                 end
                 for _, part in pairs(objects) do
@@ -5080,7 +5124,7 @@ run(function()
             updateExpandSize(val)
             if HitBoxes.Enabled then
                 if Mode.Value == 'Sword' then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (val / 3))
+                    pcall(debug.setconstant, getSwordController().swingSwordInRegion, 6, (val / 3))
                 else
                     for _, part in pairs(objects) do
                         part.Size = cachedExpandSize
@@ -5219,7 +5263,7 @@ run(function()
 		end
 
 		if GUI.Enabled then
-			if bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then return false end
+			if isUILayerOpen('MAIN') then return false end
 		end
 
 		local sword = Limit.Enabled and store.hand or store.tools.sword
@@ -5231,7 +5275,7 @@ run(function()
 		end
 
 		if LegitAura.Enabled then
-			if (tick() - bedwars.SwordController.lastSwing) > 0.2 then return false end
+			if (tick() - getSwordController().lastSwing) > 0.2 then return false end
 		end
 
 		return sword, meta
@@ -5262,8 +5306,7 @@ run(function()
 							}
 						}
 					}
-					debug.setupvalue(oldSwing or bedwars.SwordController.playSwordEffect, 6, fake)
-					debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, fake)
+					setSwingUpvalues(fake)
 
 					task.spawn(function()
 						local started = false
@@ -5339,9 +5382,9 @@ run(function()
 									store.KillauraTarget = v
 									if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
 										AnimDelay = tick() + (meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0.11)
-										bedwars.SwordController:playSwordEffect(meta, false)
+										getSwordController():playSwordEffect(meta, false)
 										if meta.displayName:find(' Scythe') then
-											bedwars.ScytheController:playLocalAnimation()
+											getScytheController():playLocalAnimation()
 										end
 
 										if vape.ThreadFix then
@@ -5356,7 +5399,7 @@ run(function()
 								if actualRoot then
 									local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 									local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
-									bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+									getSwordController().lastAttack = workspace:GetServerTimeNow()
 									store.attackReach = (delta.Magnitude * 100) // 1 / 100
 									store.attackReachUpdate = tick() + 1
 
@@ -5411,8 +5454,7 @@ run(function()
 						lplr.PlayerGui.MobileUI['2'].Visible = true
 					end)
 				end
-				debug.setupvalue(oldSwing or bedwars.SwordController.playSwordEffect, 6, bedwars.Knit)
-				debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, bedwars.Knit)
+				setSwingUpvalues(bedwars.Knit)
 				Attacking = false
 				if armC0 then
 					AnimTween = tweenService:Create(gameCamera.Viewmodel.RightHand.RightWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
@@ -5780,7 +5822,7 @@ run(function()
 			end
 	
 			if LongJump.Enabled then
-				bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+				getSwordController().lastAttack = workspace:GetServerTimeNow()
 				switchItem(item.tool, 0.1)
 				replicatedStorage['events-@easy-games/game-core:shared/game-core-networking@getEvents.Events'].useAbility:FireServer('dash', {
 					direction = dir,
@@ -6528,7 +6570,7 @@ run(function()
 						continue
 					end
 					
-					if (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.5 then
+					if (workspace:GetServerTimeNow() - getSwordController().lastAttack) > 0.5 then
 						local ent = entitylib.EntityPosition({
 							Part = 'RootPart',
 							Range = Range.Value,
@@ -14038,8 +14080,8 @@ run(function()
     HitFix = vape.Categories.Legit:CreateModule({
         Name = 'HitFix',
 		Function = function(callback)
-			debug.setconstant(bedwars.SwordController.swingSwordAtMouse, 23, callback and 'raycast' or 'Raycast')
-			debug.setupvalue(bedwars.SwordController.swingSwordAtMouse, 4, callback and bedwars.QueryUtil or workspace)
+			pcall(debug.setconstant, getSwordController().swingSwordAtMouse, 23, callback and 'raycast' or 'Raycast')
+			pcall(debug.setupvalue, getSwordController().swingSwordAtMouse, 4, callback and bedwars.QueryUtil or workspace)
 		end,
 		Tooltip = 'Changes the raycast function to the correct one'
 	})
@@ -15812,7 +15854,7 @@ run(function()
 					end
 
 					if GUICheck.Enabled then
-						if bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+						if isUILayerOpen('MAIN') then
 							task.wait(0.1)
 							continue
 						end
@@ -31940,9 +31982,9 @@ run(function()
 		lastHitTime = 0
 		store.KillauraTarget = nil
 		pcall(function()
-			if bedwars.SwordController then
-				bedwars.SwordController.disableSwingState = false
-				bedwars.SwordController.lastAttack = 0
+			if getSwordController() then
+				getSwordController().disableSwingState = false
+				getSwordController().lastAttack = 0
 			end
 		end)
 	end
@@ -31959,9 +32001,9 @@ run(function()
 					if not SilentAura.Enabled then break end
 					if activeToken ~= loopToken then break end
 
-					if (tick() - bedwars.SwordController.lastSwing) > 0.2 then continue end
+					if (tick() - getSwordController().lastSwing) > 0.2 then continue end
 
-					local ok, open = pcall(function() return bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) end)
+					local ok, open = pcall(function() return isUILayerOpen('MAIN') end)
 					if ok and open then continue end
 
 					if tick() - store.silasAbilityTime < 2.2 then continue end
@@ -32409,7 +32451,7 @@ run(function()
 
     local function equipFor(block)
         if not ToolSwitch.Enabled then return end
-        if (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) <= 0.4 then return end
+        if (workspace:GetServerTimeNow() - getSwordController().lastAttack) <= 0.4 then return end
         local meta = bedwars.ItemMeta[block.Name]
         if not meta or not meta.block then return end
         local tool = store.tools[meta.block.breakType]
